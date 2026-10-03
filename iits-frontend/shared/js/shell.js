@@ -135,8 +135,11 @@
     // Optimistically render with cached user, then confirm with the server.
     if (!user) user = { full_name: "...", role: role || "" };
 
-    const pageRoot = document.getElementById("page-root");
-    const pageContentHtml = pageRoot ? pageRoot.innerHTML : "";
+    // Preserve the ENTIRE original body (page-root content + any modals that are
+    // siblings of it, e.g. #user-modal), not just #page-root — modals declared
+    // outside #page-root would otherwise be silently dropped when we rebuild
+    // the shell below, leaving page scripts calling addEventListener on null.
+    const pageContentHtml = document.body.innerHTML.replace(/<script[\s\S]*?<\/script>/gi, "");
 
     document.body.innerHTML = `
       <div class="app-shell">
