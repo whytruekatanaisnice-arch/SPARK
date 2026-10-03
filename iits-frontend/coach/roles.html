@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AJK Roles · IITS Coach</title>
+<link rel="stylesheet" href="/shared/css/styles.css">
+</head>
+<body data-role="coach" data-active="roles" data-title="AJK Roles">
+<div id="page-root">
+
+  <div class="page-head">
+    <div><h1>AJK role assignment</h1><p>Assign committee positions — points save straight to PAJSK, no extra step.</p></div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;">
+    <div class="form-row" style="margin:0;align-items:flex-end;">
+      <div class="field" style="margin:0;"><label for="club-select">Club</label><select id="club-select"></select></div>
+      <div class="field" style="margin:0;max-width:140px;"><label for="year-select">Year</label><select id="year-select"></select></div>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Student</th><th>Class</th><th>Current role</th><th>Assign role</th></tr></thead>
+      <tbody id="roster-tbody"><tr><td colspan="4"><div class="loading-row"><span class="spinner"></span> Pick a club to load its roster…</div></td></tr></tbody>
+    </table>
+  </div>
+
+</div>
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/shell.js"></script>
+<script>
+let roleTypes = [];
+
+async function loadMyClubs() {
+  const user = IITS.getUser();
+  const clubs = await IITS.api("/api/clubs");
+  const mine = clubs.filter(c => c.coach_id === user.id);
+  document.getElementById("club-select").innerHTML = mine.map(c => `<option value="${c.id}">${c.name}</option>`).join("") || `<option value="">No clubs assigned</option>`;
+}
+
+function fillYears() {
+  const select = document.getElementById("year-select");
+  const thisYear = new Date().getFullYear();
+  select.innerHTML = [thisYear, thisYear - 1].map(y => `<option value="${y}">${y}</option>`).join("");
+}
+
+async function loadRoster() {
+  const clubId = document.getElementById("club-select").value;
+  const year = document.getElementById("year-select").value;
+  const tbody = document.getElementById("roster-tbody");
+  if (!clubId) return;
+  tbody.innerHTML = `<tr><td colspan="4"><div class="loading-row"><span class="spinner"></span> Loading…</div></td></tr>`;
+  try {
+    const [roster, currentRoles] = await Promise.all([
+      IITS.api(`/api/coach/clubs/${clubId}/roster`),
+      IITS.api(`/api/coach/roles?club_id=${clubId}`),
+    ]);
+    const roleByStudent = {};
+    currentRoles.filter(r => r.year == year).forEach(r => roleByStudent[r.student_id] = r);
+
+    if (!roster.length) { tbody.innerHTML = `<tr><td colspan="4"><div class="empty-state"><div class="title">No members yet</div>Add students to this club first.</div></td></tr>`; return; }
+
+    tbody.innerHTML = roster.map(s => {
+      const current = roleByStudent[s.id];
+      const currentName = current ? (roleTypes.find(rt => rt.id === current.role_type_id)?.name || "Assigned") : "AJK (default)";
+      return `
+        <tr>
+          <td>${s.full_name}<div class="muted" style="font-size:0.76rem;">${s.student_number || ""}</div></td>
+          <td>${s.class_name || "—"}</td>
+          <td><span class="badge badge-blue">${currentName}</span></td>
+          <td>
+            <select class="role-select" data-student="${s.id}" style="max-width:190px;display:inline-block;">
+              ${roleTypes.map(rt => `<option value="${rt.id}" ${current?.role_type_id === rt.id ? "selected" : ""}>${rt.name} (+${rt.pajsk_points})</option>`).join("")}
+            </select>
+            <button class="btn btn-primary btn-sm" onclick="assignRole('${s.id}')">Save</button>
+          </td>
+        </tr>`;
+    }).join("");
+  } catch (e) { IITS.toast(e.message, "error"); }
+}
+
+async function assignRole(studentId) {
+  const clubId = document.getElementById("club-select").value;
+  const year = document.getElementById("year-select").value;
+  const select = document.querySelector(`.role-select[data-student="${studentId}"]`);
+  try {
+    await IITS.api("/api/coach/roles/assign", { method: "POST", body: { club_id: clubId, student_id: studentId, role_type_id: select.value, year: parseInt(year) } });
+    IITS.toast("Role saved — PAJSK updated automatically", "success");
+    loadRoster();
+  } catch (e) { IITS.toast(e.message, "error"); }
+}
+
+document.addEventListener("iits:shell-ready", async () => {
+  fillYears();
+  await loadMyClubs();
+  try { roleTypes = await IITS.api("/api/coach/role-types"); } catch (e) { IITS.toast(e.message, "error"); }
+  document.getElementById("club-select").addEventListener("change", loadRoster);
+  document.getElementById("year-select").addEventListener("change", loadRoster);
+  loadRoster();
+});
+</script>
+</body>
+</html>

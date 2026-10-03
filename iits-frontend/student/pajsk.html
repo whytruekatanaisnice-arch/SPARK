@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PAJSK · IITS Student</title>
+<link rel="stylesheet" href="/shared/css/styles.css">
+</head>
+<body data-role="student" data-active="pajsk" data-title="PAJSK">
+<div id="page-root">
+
+  <div class="page-head"><div><h1>My PAJSK progress</h1><p>Updated automatically — attendance, AJK roles, achievements, and NILAM all count.</p></div></div>
+
+  <div class="card" style="text-align:center;margin-bottom:18px;">
+    <div class="stat-label">Total points</div>
+    <div style="font-family:'Fraunces',serif;font-size:3rem;font-weight:600;" id="total-points">–</div>
+  </div>
+
+  <div class="grid grid-2" id="breakdown-grid"></div>
+
+  <div class="card" style="margin-top:18px;">
+    <h2>My achievements</h2>
+    <div id="achievements-list"><p class="muted">Loading…</p></div>
+  </div>
+
+</div>
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/shell.js"></script>
+<script>
+function bar(label, value, max) {
+  const pct = max > 0 ? Math.min(100, Math.round((value / max) * 100)) : 0;
+  return `<div class="card">
+    <div class="flex between" style="margin-bottom:8px;"><strong style="font-size:0.88rem;">${label}</strong><span class="muted" style="font-size:0.84rem;">${value} pts</span></div>
+    <div class="progress"><span style="width:${pct}%;"></span></div>
+  </div>`;
+}
+
+document.addEventListener("iits:shell-ready", async () => {
+  try {
+    const p = await IITS.api("/api/student/pa_jsK");
+    document.getElementById("total-points").textContent = p.total;
+    const maxRef = Math.max(p.role_points, p.achievement_points, p.attendance_points, p.nilam_points, 10);
+    document.getElementById("breakdown-grid").innerHTML =
+      bar("AJK role points", p.role_points, maxRef) +
+      bar("Achievement points", p.achievement_points, maxRef) +
+      bar("Attendance points", p.attendance_points, maxRef) +
+      bar("NILAM reading points", p.nilam_points, maxRef);
+  } catch (e) { IITS.toast(e.message, "error"); }
+
+  try {
+    const achievements = await IITS.api("/api/student/achievements");
+    const el = document.getElementById("achievements-list");
+    el.innerHTML = achievements.length
+      ? achievements.map(a => `<div class="flex between" style="padding:8px 0;border-bottom:1px solid var(--border);"><span style="font-size:0.88rem;">${a.competition_name}</span><span class="badge badge-yellow">${a.level || ""}</span></div>`).join("")
+      : `<p class="muted">No achievements recorded yet.</p>`;
+  } catch (e) { IITS.toast(e.message, "error"); }
+});
+</script>
+</body>
+</html>

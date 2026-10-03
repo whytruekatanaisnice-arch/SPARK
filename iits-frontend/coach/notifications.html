@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Notifications · IITS Coach</title>
+<link rel="stylesheet" href="/shared/css/styles.css">
+</head>
+<body data-role="coach" data-active="notifications" data-title="Notifications">
+<div id="page-root">
+
+  <div class="page-head"><div><h1>Send a notification</h1><p>Reach your club's students and/or parents instantly.</p></div></div>
+
+  <div class="card" style="max-width:520px;">
+    <form id="notify-form">
+      <div class="field"><label for="club-select">Club</label><select id="club-select" required></select></div>
+      <div class="field"><label for="audience">Send to</label>
+        <select id="audience"><option value="students">Students</option><option value="parents">Parents</option><option value="both">Both</option></select>
+      </div>
+      <div class="field"><label for="title">Title</label><input type="text" id="title" required placeholder="e.g. Bring sports attire tomorrow"></div>
+      <div class="field"><label for="body">Message</label><textarea id="body" rows="3" required></textarea></div>
+      <button type="submit" class="btn btn-primary" style="width:100%;">Send notification</button>
+    </form>
+  </div>
+
+</div>
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/shell.js"></script>
+<script>
+document.addEventListener("iits:shell-ready", async () => {
+  const user = IITS.getUser();
+  const clubs = await IITS.api("/api/clubs");
+  const mine = clubs.filter(c => c.coach_id === user.id);
+  document.getElementById("club-select").innerHTML = mine.map(c => `<option value="${c.id}">${c.name}</option>`).join("") || `<option value="">No clubs assigned</option>`;
+
+  document.getElementById("notify-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const payload = {
+      club_id: document.getElementById("club-select").value,
+      audience: document.getElementById("audience").value,
+      title: document.getElementById("title").value.trim(),
+      body: document.getElementById("body").value.trim(),
+    };
+    try {
+      const res = await IITS.api("/api/coach/notifications/broadcast", { method: "POST", body: payload });
+      IITS.toast(res.detail, "success");
+      document.getElementById("notify-form").reset();
+    } catch (err) { IITS.toast(err.message, "error"); }
+  });
+});
+</script>
+</body>
+</html>

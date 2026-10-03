@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Clubs · IITS Admin</title>
+<link rel="stylesheet" href="/shared/css/styles.css">
+</head>
+<body data-role="admin" data-active="clubs" data-title="Clubs">
+<div id="page-root">
+
+  <div class="page-head">
+    <div><h1>Clubs &amp; societies</h1><p>Create clubs, set their schedule, and assign a venue and coach.</p></div>
+    <button class="btn btn-primary" id="new-club-btn">+ New club</button>
+  </div>
+
+  <div class="grid grid-3" id="clubs-grid">
+    <div class="loading-row"><span class="spinner"></span> Loading clubs…</div>
+  </div>
+
+</div>
+
+<div class="modal-backdrop" id="club-modal">
+  <div class="modal">
+    <div class="modal-head"><h2>New club</h2><button class="modal-close" id="modal-close">✕</button></div>
+    <form id="club-form">
+      <div class="field"><label for="name">Club name</label><input type="text" id="name" required></div>
+      <div class="form-row">
+        <div class="field"><label for="category">Category</label>
+          <select id="category">
+            <option>Uniform Body</option><option>Club &amp; Society</option><option>Sports &amp; Games</option>
+          </select>
+        </div>
+        <div class="field"><label for="coach_id">Coach</label><select id="coach_id"><option value="">— None —</option></select></div>
+      </div>
+      <div class="field"><label for="venue_id">Venue</label><select id="venue_id"><option value="">— None —</option></select></div>
+      <div class="field"><label for="description">Description</label><textarea id="description" rows="2"></textarea></div>
+
+      <label style="font-size:0.82rem;font-weight:600;">Weekly schedule</label>
+      <div id="schedule-rows"></div>
+      <button type="button" class="btn btn-secondary btn-sm" id="add-schedule-row" style="margin:8px 0 16px;">+ Add time slot</button>
+
+      <div class="flex gap-8" style="justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary" id="cancel-btn">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save club</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/shell.js"></script>
+<script>
+let coaches = [], venues = [];
+
+function scheduleRowHtml() {
+  return `<div class="form-row schedule-row" style="align-items:flex-end;">
+    <div class="field" style="max-width:110px;"><label>Day</label>
+      <select class="sch-day"><option>MON</option><option>TUE</option><option>WED</option><option>THU</option><option>FRI</option><option>SAT</option><option>SUN</option></select>
+    </div>
+    <div class="field" style="max-width:120px;"><label>Start</label><input type="time" class="sch-start" value="15:00"></div>
+    <div class="field" style="max-width:120px;"><label>End</label><input type="time" class="sch-end" value="16:30"></div>
+    <button type="button" class="btn btn-ghost btn-sm remove-row" style="margin-bottom:14px;">Remove</button>
+  </div>`;
+}
+
+async function loadLookups() {
+  const users = await IITS.api("/api/admin/users?role=coach");
+  coaches = users;
+  venues = await IITS.api("/api/admin/venues");
+  document.getElementById("coach_id").innerHTML = '<option value="">— None —</option>' + coaches.map(c => `<option value="${c.id}">${c.full_name}</option>`).join("");
+  document.getElementById("venue_id").innerHTML = '<option value="">— None —</option>' + venues.map(v => `<option value="${v.id}">${v.name}</option>`).join("");
+}
+
+function coachName(id) { const c = coaches.find(c => c.id === id); return c ? c.full_name : "Unassigned"; }
+function venueName(id) { const v = venues.find(v => v.id === id); return v ? v.name : "No venue set"; }
+
+async function loadClubs() {
+  const grid = document.getElementById("clubs-grid");
+  try {
+    const clubs = await IITS.api("/api/clubs");
+    if (!clubs.length) { grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="title">No clubs yet</div>Create your first club to get started.</div>`; return; }
+    grid.innerHTML = clubs.map(c => `
+      <div class="card">
+        <span class="badge badge-blue">${c.category || "Club"}</span>
+        <h3 style="margin-top:10px;">${c.name}</h3>
+        <p style="font-size:0.85rem;">${c.description || "No description yet."}</p>
+        <div class="divider"></div>
+        <div class="muted" style="font-size:0.82rem;">${IITS.icon("user")} ${coachName(c.coach_id)}</div>
+        <div class="muted" style="font-size:0.82rem;margin-top:4px;">${IITS.icon("pin")} ${venueName(c.venue_id)}</div>
+      </div>`).join("");
+  } catch (e) { IITS.toast(e.message, "error"); }
+}
+
+function openModal() { document.getElementById("club-modal").classList.add("open"); }
+function closeModal() { document.getElementById("club-modal").classList.remove("open"); document.getElementById("club-form").reset(); document.getElementById("schedule-rows").innerHTML = scheduleRowHtml(); }
+
+document.addEventListener("iits:shell-ready", async () => {
+  document.getElementById("schedule-rows").innerHTML = scheduleRowHtml();
+  await loadLookups();
+  await loadClubs();
+
+  document.getElementById("new-club-btn").addEventListener("click", openModal);
+  document.getElementById("modal-close").addEventListener("click", closeModal);
+  document.getElementById("cancel-btn").addEventListener("click", closeModal);
+  document.getElementById("add-schedule-row").addEventListener("click", () => {
+    document.getElementById("schedule-rows").insertAdjacentHTML("beforeend", scheduleRowHtml());
+  });
+  document.getElementById("schedule-rows").addEventListener("click", (e) => {
+    if (e.target.classList.contains("remove-row")) e.target.closest(".schedule-row").remove();
+  });
+
+  document.getElementById("club-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const schedules = [...document.querySelectorAll(".schedule-row")].map(row => ({
+      day_of_week: row.querySelector(".sch-day").value,
+      start_time: row.querySelector(".sch-start").value,
+      end_time: row.querySelector(".sch-end").value,
+    }));
+    const payload = {
+      name: document.getElementById("name").value.trim(),
+      category: document.getElementById("category").value,
+      coach_id: document.getElementById("coach_id").value || null,
+      venue_id: document.getElementById("venue_id").value || null,
+      description: document.getElementById("description").value.trim() || null,
+      schedules,
+    };
+    try {
+      await IITS.api("/api/admin/clubs", { method: "POST", body: payload });
+      IITS.toast("Club created", "success");
+      closeModal();
+      loadClubs();
+    } catch (err) { IITS.toast(err.message, "error"); }
+  });
+});
+</script>
+</body>
+</html>

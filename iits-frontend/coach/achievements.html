@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Achievements · IITS Coach</title>
+<link rel="stylesheet" href="/shared/css/styles.css">
+</head>
+<body data-role="coach" data-active="achievements" data-title="Achievements">
+<div id="page-root">
+
+  <div class="page-head">
+    <div><h1>Competition achievements</h1><p>Record a result — PAJSK points are calculated and applied right away.</p></div>
+  </div>
+
+  <div class="grid grid-2" style="align-items:start;">
+    <div class="card">
+      <h3>New achievement</h3>
+      <form id="achievement-form">
+        <div class="field"><label for="club-select">Club</label><select id="club-select" required></select></div>
+        <div class="field"><label for="student-select">Student</label><select id="student-select" required></select></div>
+        <div class="field"><label for="competition_name">Competition name</label><input type="text" id="competition_name" required placeholder="e.g. State Robotics Challenge"></div>
+        <div class="form-row">
+          <div class="field"><label for="level">Level</label>
+            <select id="level"><option>School</option><option>District</option><option>State</option><option>National</option></select>
+          </div>
+          <div class="field"><label for="event_date">Event date</label><input type="date" id="event_date"></div>
+        </div>
+        <div class="field"><label for="rank_id">Rank</label><select id="rank_id" required></select></div>
+        <div id="points-preview" class="badge badge-yellow" style="margin-bottom:14px;">+0 PAJSK points</div>
+        <button type="submit" class="btn btn-primary" style="width:100%;">Record achievement</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3>Recent achievements</h3>
+      <div id="achievements-list"><p class="muted">Select a club to view its achievements.</p></div>
+    </div>
+  </div>
+
+</div>
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/shell.js"></script>
+<script>
+let ranks = [];
+
+async function loadMyClubs() {
+  const user = IITS.getUser();
+  const clubs = await IITS.api("/api/clubs");
+  const mine = clubs.filter(c => c.coach_id === user.id);
+  document.getElementById("club-select").innerHTML = mine.map(c => `<option value="${c.id}">${c.name}</option>`).join("") || `<option value="">No clubs assigned</option>`;
+}
+
+async function loadRosterForClub() {
+  const clubId = document.getElementById("club-select").value;
+  if (!clubId) return;
+  try {
+    const roster = await IITS.api(`/api/coach/clubs/${clubId}/roster`);
+    document.getElementById("student-select").innerHTML = roster.map(s => `<option value="${s.id}">${s.full_name}</option>`).join("") || `<option value="">No members</option>`;
+  } catch (e) { IITS.toast(e.message, "error"); }
+  loadAchievements();
+}
+
+async function loadAchievements() {
+  const clubId = document.getElementById("club-select").value;
+  const list = document.getElementById("achievements-list");
+  if (!clubId) return;
+  try {
+    const items = await IITS.api(`/api/coach/achievements?club_id=${clubId}`);
+    list.innerHTML = items.length
+      ? items.map(a => `<div class="flex between" style="padding:9px 0;border-bottom:1px solid var(--border);">
+          <div><strong style="font-size:0.86rem;">${a.competition_name}</strong><div class="muted" style="font-size:0.78rem;">${a.level || ""} ${a.event_date || ""}</div></div>
+          <span class="badge badge-yellow">${ranks.find(r => r.id === a.rank_id)?.name || "Rank"}</span>
+        </div>`).join("")
+      : `<p class="muted">No achievements recorded for this club yet.</p>`;
+  } catch (e) { IITS.toast(e.message, "error"); }
+}
+
+function updatePointsPreview() {
+  const rankId = document.getElementById("rank_id").value;
+  const rank = ranks.find(r => r.id === rankId);
+  document.getElementById("points-preview").textContent = `+${rank ? rank.pajsk_points : 0} PAJSK points`;
+}
+
+document.addEventListener("iits:shell-ready", async () => {
+  document.getElementById("event_date").value = new Date().toISOString().slice(0, 10);
+  await loadMyClubs();
+  try {
+    ranks = await IITS.api("/api/coach/achievement-ranks");
+    document.getElementById("rank_id").innerHTML = ranks.map(r => `<option value="${r.id}">${r.name}</option>`).join("");
+    updatePointsPreview();
+  } catch (e) { IITS.toast(e.message, "error"); }
+
+  document.getElementById("club-select").addEventListener("change", loadRosterForClub);
+  document.getElementById("rank_id").addEventListener("change", updatePointsPreview);
+  loadRosterForClub();
+
+  document.getElementById("achievement-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const payload = {
+      club_id: document.getElementById("club-select").value,
+      student_id: document.getElementById("student-select").value,
+      rank_id: document.getElementById("rank_id").value,
+      competition_name: document.getElementById("competition_name").value.trim(),
+      level: document.getElementById("level").value,
+      event_date: document.getElementById("event_date").value || null,
+    };
+    try {
+      await IITS.api("/api/coach/achievements", { method: "POST", body: payload });
+      IITS.toast("Achievement recorded — PAJSK updated", "success");
+      document.getElementById("competition_name").value = "";
+      loadAchievements();
+    } catch (err) { IITS.toast(err.message, "error"); }
+  });
+});
+</script>
+</body>
+</html>

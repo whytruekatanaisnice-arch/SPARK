@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Log in · IITS</title>
+<link rel="stylesheet" href="/shared/css/styles.css">
+</head>
+<body>
+<div class="auth-page">
+  <div class="auth-card">
+    <div class="auth-mark">I</div>
+    <h1>Log in to IITS</h1>
+    <p style="margin-bottom:22px;">Integrated Information &amp; Tracking System for co-curricular activities.</p>
+    <div class="auth-error" id="auth-error"></div>
+    <form id="login-form">
+      <div class="field">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" required autocomplete="username" placeholder="you@school.edu.my">
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="••••••••">
+      </div>
+      <button class="btn btn-primary" type="submit" id="login-btn" style="width:100%;margin-top:6px;">Log in</button>
+    </form>
+    <p class="muted" style="margin-top:18px;font-size:0.78rem;text-align:center;">
+      Demo accounts: admin@iits.demo / coach@iits.demo / student@iits.demo / parent@iits.demo — see project README for passwords.
+    </p>
+  </div>
+</div>
+
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script>
+  // If already logged in, skip straight to the right dashboard.
+  const cachedUser = IITS.getUser();
+  if (IITS.getToken() && cachedUser) {
+    window.location.href = `/${cachedUser.role}/dashboard.html`;
+  }
+
+  const form = document.getElementById("login-form");
+  const errorBox = document.getElementById("auth-error");
+  const btn = document.getElementById("login-btn");
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    errorBox.classList.remove("show");
+    btn.disabled = true;
+    btn.textContent = "Logging in…";
+    try {
+      const data = await IITS.api("/api/auth/login", {
+        method: "POST",
+        body: { email: document.getElementById("email").value.trim(), password: document.getElementById("password").value },
+      });
+      IITS.setToken(data.access_token);
+      IITS.setUser(data.user);
+      window.location.href = `/${data.user.role}/dashboard.html`;
+    } catch (err) {
+      errorBox.textContent = err.message || "Invalid email or password.";
+      errorBox.classList.add("show");
+      btn.disabled = false;
+      btn.textContent = "Log in";
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Notifications · IITS Parent</title>
+<link rel="stylesheet" href="/shared/css/styles.css">
+</head>
+<body data-role="parent" data-active="notifications" data-title="Notifications">
+<div id="page-root">
+
+  <div class="page-head"><div><h1>Notifications</h1><p>Absences, upcoming events, and announcements.</p></div></div>
+
+  <div id="notif-list"><div class="loading-row"><span class="spinner"></span> Loading…</div></div>
+
+</div>
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/shell.js"></script>
+<script>
+function timeAgo(iso) {
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (diff < 3600) return Math.max(1, Math.round(diff / 60)) + "m ago";
+  if (diff < 86400) return Math.round(diff / 3600) + "h ago";
+  return Math.round(diff / 86400) + "d ago";
+}
+
+async function loadNotifications() {
+  const list = document.getElementById("notif-list");
+  try {
+    const items = await IITS.api("/api/parent/notifications");
+    list.innerHTML = items.length
+      ? items.map(n => `
+        <div class="card" style="${n.is_read ? "" : "border-left:3px solid var(--primary);"}">
+          <div class="flex between">
+            <strong style="font-size:0.9rem;">${n.title}</strong>
+            ${!n.is_read ? `<button class="btn btn-ghost btn-sm" onclick="markRead('${n.id}')">Mark read</button>` : `<span class="badge badge-grey">Read</span>`}
+          </div>
+          <p style="font-size:0.86rem;">${n.body}</p>
+          <div class="muted" style="font-size:0.76rem;">${timeAgo(n.created_at)}</div>
+        </div>`).join("")
+      : `<div class="card empty-state"><div class="title">No notifications</div>You're all caught up.</div>`;
+  } catch (e) { IITS.toast(e.message, "error"); }
+}
+
+async function markRead(id) {
+  try { await IITS.api(`/api/parent/notifications/${id}/read`, { method: "PATCH" }); loadNotifications(); }
+  catch (e) { IITS.toast(e.message, "error"); }
+}
+
+document.addEventListener("iits:shell-ready", loadNotifications);
+</script>
+</body>
+</html>

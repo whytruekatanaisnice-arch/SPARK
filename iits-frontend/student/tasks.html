@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tasks · IITS Student</title>
+<link rel="stylesheet" href="/shared/css/styles.css">
+</head>
+<body data-role="student" data-active="tasks" data-title="Tasks">
+<div id="page-root">
+
+  <div class="page-head"><div><h1>Tasks</h1><p>Submit your work and check feedback from your coach.</p></div></div>
+
+  <div id="tasks-list"><div class="loading-row"><span class="spinner"></span> Loading tasks…</div></div>
+
+</div>
+
+<div class="modal-backdrop" id="submit-modal">
+  <div class="modal">
+    <div class="modal-head"><h2 id="submit-task-title">Submit work</h2><button class="modal-close" id="modal-close">✕</button></div>
+    <form id="submit-form">
+      <input type="hidden" id="submit-task-id">
+      <div class="field"><label for="text_content">Describe your work / idea</label><textarea id="text_content" rows="3" placeholder="Write about your creative idea, or paste a link…"></textarea></div>
+      <div class="field"><label for="file">Upload file (image, PDF, or video)</label><input type="file" id="file" accept="image/*,application/pdf,video/*"></div>
+      <button type="submit" class="btn btn-primary" style="width:100%;">Submit</button>
+    </form>
+  </div>
+</div>
+
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/shell.js"></script>
+<script>
+let tasksCache = [];
+
+async function loadTasks() {
+  const list = document.getElementById("tasks-list");
+  try {
+    tasksCache = await IITS.api("/api/student/tasks");
+    if (!tasksCache.length) { list.innerHTML = `<div class="card empty-state"><div class="title">No tasks right now</div>Your coach hasn't assigned anything yet.</div>`; return; }
+    list.innerHTML = tasksCache.map(t => `
+      <div class="card">
+        <div class="flex between">
+          <div>
+            <h3>${t.title}</h3>
+            <p style="font-size:0.85rem;">${t.description || ""}</p>
+            ${t.due_date ? `<span class="badge ${new Date(t.due_date) < new Date() ? "badge-red" : "badge-blue"}">Due ${new Date(t.due_date).toLocaleDateString()}</span>` : ""}
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="openSubmit('${t.id}', '${t.title.replace(/'/g, "\\'")}')">Submit</button>
+        </div>
+      </div>`).join("");
+  } catch (e) { IITS.toast(e.message, "error"); }
+}
+
+function openSubmit(taskId, title) {
+  document.getElementById("submit-task-id").value = taskId;
+  document.getElementById("submit-task-title").textContent = `Submit: ${title}`;
+  document.getElementById("submit-modal").classList.add("open");
+}
+function closeSubmit() { document.getElementById("submit-modal").classList.remove("open"); document.getElementById("submit-form").reset(); }
+
+document.addEventListener("iits:shell-ready", () => {
+  loadTasks();
+  document.getElementById("modal-close").addEventListener("click", closeSubmit);
+
+  document.getElementById("submit-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const taskId = document.getElementById("submit-task-id").value;
+    const text = document.getElementById("text_content").value.trim();
+    const fileInput = document.getElementById("file");
+    let file_url = null;
+
+    try {
+      if (fileInput.files[0]) {
+        const fd = new FormData();
+        fd.append("file", fileInput.files[0]);
+        const uploadRes = await IITS.api("/api/uploads", { method: "POST", body: fd, isForm: true });
+        file_url = uploadRes.file_url;
+      }
+      await IITS.api("/api/student/submissions", { method: "POST", body: { task_id: taskId, text_content: text || null, file_url } });
+      IITS.toast("Submitted! Your coach will review it soon.", "success");
+      closeSubmit();
+    } catch (err) { IITS.toast(err.message, "error"); }
+  });
+});
+</script>
+</body>
+</html>

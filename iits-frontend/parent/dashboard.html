@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dashboard · IITS Parent</title>
+<link rel="stylesheet" href="/shared/css/styles.css">
+</head>
+<body data-role="parent" data-active="dashboard" data-title="Dashboard">
+<div id="page-root">
+
+  <div class="page-head"><div><h1>Welcome back</h1><p>An overview of your children's co-curricular activities.</p></div></div>
+
+  <div id="children-grid" class="grid grid-2"><div class="loading-row"><span class="spinner"></span> Loading…</div></div>
+
+</div>
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/shell.js"></script>
+<script>
+document.addEventListener("iits:shell-ready", async () => {
+  const grid = document.getElementById("children-grid");
+  try {
+    const children = await IITS.api("/api/parent/children");
+    if (!children.length) { grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="title">No linked children</div>Ask your school admin to link your account to your child's profile.</div>`; return; }
+
+    grid.innerHTML = children.map(c => `
+      <div class="card">
+        <span class="badge badge-blue">${c.relationship || "Guardian"}</span>
+        <h3 style="margin-top:10px;">${c.full_name}</h3>
+        <p class="muted" style="font-size:0.84rem;">${c.student_number} · ${c.class_name || "No class set"}</p>
+        <div class="divider"></div>
+        <div id="pajsk-${c.student_id}" class="muted" style="font-size:0.84rem;">Loading PAJSK…</div>
+        <div class="flex gap-8" style="margin-top:12px;">
+          <a class="btn btn-secondary btn-sm" href="/parent/attendance.html?child=${c.student_id}&name=${encodeURIComponent(c.full_name)}">Attendance</a>
+          <a class="btn btn-secondary btn-sm" href="/parent/reports.html?child=${c.student_id}&name=${encodeURIComponent(c.full_name)}">PAJSK report</a>
+        </div>
+      </div>`).join("");
+
+    children.forEach(async c => {
+      try {
+        const p = await IITS.api(`/api/parent/children/${c.student_id}/pa_jsK`);
+        document.getElementById(`pajsk-${c.student_id}`).innerHTML = `<strong style="color:var(--ink);">${p.total}</strong> PAJSK points this year`;
+      } catch (e) { /* ignore per-child failure */ }
+    });
+  } catch (e) { IITS.toast(e.message, "error"); }
+});
+</script>
+</body>
+</html>

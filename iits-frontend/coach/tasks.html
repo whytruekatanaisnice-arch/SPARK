@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tasks · IITS Coach</title>
+<link rel="stylesheet" href="/shared/css/styles.css">
+</head>
+<body data-role="coach" data-active="tasks" data-title="Tasks">
+<div id="page-root">
+
+  <div class="page-head">
+    <div><h1>Tasks</h1><p>Set tasks for your club and review what students submit.</p></div>
+    <button class="btn btn-primary" id="new-task-btn">+ New task</button>
+  </div>
+
+  <div class="field" style="max-width:280px;"><label for="club-select">Club</label><select id="club-select"></select></div>
+
+  <div id="tasks-list" style="margin-top:12px;"></div>
+
+</div>
+
+<div class="modal-backdrop" id="task-modal">
+  <div class="modal">
+    <div class="modal-head"><h2>New task</h2><button class="modal-close" id="modal-close">✕</button></div>
+    <form id="task-form">
+      <div class="field"><label for="title">Title</label><input type="text" id="title" required placeholder="e.g. Design a poster for Sports Day"></div>
+      <div class="field"><label for="description">Description</label><textarea id="description" rows="3"></textarea></div>
+      <div class="field"><label for="due_date">Due date (optional)</label><input type="datetime-local" id="due_date"></div>
+      <div class="flex gap-8" style="justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary" id="cancel-btn">Cancel</button>
+        <button type="submit" class="btn btn-primary">Create task</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/shell.js"></script>
+<script>
+async function loadMyClubs() {
+  const user = IITS.getUser();
+  const clubs = await IITS.api("/api/clubs");
+  const mine = clubs.filter(c => c.coach_id === user.id);
+  document.getElementById("club-select").innerHTML = mine.map(c => `<option value="${c.id}">${c.name}</option>`).join("") || `<option value="">No clubs assigned</option>`;
+}
+
+async function loadTasks() {
+  const clubId = document.getElementById("club-select").value;
+  const list = document.getElementById("tasks-list");
+  if (!clubId) return;
+  list.innerHTML = `<div class="loading-row"><span class="spinner"></span> Loading tasks…</div>`;
+  try {
+    const tasks = await IITS.api(`/api/coach/tasks?club_id=${clubId}`);
+    if (!tasks.length) { list.innerHTML = `<div class="card empty-state"><div class="title">No tasks yet</div>Create one above.</div>`; return; }
+    const withCounts = await Promise.all(tasks.map(async t => {
+      const subs = await IITS.api(`/api/coach/submissions?task_id=${t.id}`);
+      return { ...t, submissionCount: subs.length };
+    }));
+    list.innerHTML = withCounts.map(t => `
+      <div class="card">
+        <div class="flex between">
+          <div>
+            <h3>${t.title}</h3>
+            <p style="font-size:0.85rem;">${t.description || ""}</p>
+            ${t.due_date ? `<div class="muted" style="font-size:0.78rem;">Due ${new Date(t.due_date).toLocaleString()}</div>` : ""}
+          </div>
+          <div style="text-align:right;">
+            <span class="badge badge-blue">${t.submissionCount} submission${t.submissionCount === 1 ? "" : "s"}</span>
+            <div style="margin-top:8px;"><a class="btn btn-secondary btn-sm" href="/coach/feedback.html?task=${t.id}&title=${encodeURIComponent(t.title)}">Review submissions</a></div>
+          </div>
+        </div>
+      </div>`).join("");
+  } catch (e) { IITS.toast(e.message, "error"); }
+}
+
+function openModal() { document.getElementById("task-modal").classList.add("open"); }
+function closeModal() { document.getElementById("task-modal").classList.remove("open"); document.getElementById("task-form").reset(); }
+
+document.addEventListener("iits:shell-ready", async () => {
+  await loadMyClubs();
+  loadTasks();
+  document.getElementById("club-select").addEventListener("change", loadTasks);
+  document.getElementById("new-task-btn").addEventListener("click", openModal);
+  document.getElementById("modal-close").addEventListener("click", closeModal);
+  document.getElementById("cancel-btn").addEventListener("click", closeModal);
+
+  document.getElementById("task-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const payload = {
+      club_id: document.getElementById("club-select").value,
+      title: document.getElementById("title").value.trim(),
+      description: document.getElementById("description").value.trim() || null,
+      due_date: document.getElementById("due_date").value ? new Date(document.getElementById("due_date").value).toISOString() : null,
+    };
+    try {
+      await IITS.api("/api/coach/tasks", { method: "POST", body: payload });
+      IITS.toast("Task created", "success");
+      closeModal();
+      loadTasks();
+    } catch (err) { IITS.toast(err.message, "error"); }
+  });
+});
+</script>
+</body>
+</html>

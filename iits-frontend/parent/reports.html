@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PAJSK Report · IITS Parent</title>
+<link rel="stylesheet" href="/shared/css/styles.css">
+</head>
+<body data-role="parent" data-active="reports" data-title="PAJSK Report">
+<div id="page-root">
+
+  <div class="page-head"><div><h1 id="page-heading">PAJSK standing</h1><p>Your child's current PAJSK score and coach feedback.</p></div></div>
+
+  <div class="field" style="max-width:280px;" id="child-switcher-wrap"><label for="child-select">Viewing</label><select id="child-select"></select></div>
+
+  <div class="card" style="text-align:center;margin:16px 0;">
+    <div class="stat-label">Total PAJSK points</div>
+    <div style="font-family:'Fraunces',serif;font-size:3rem;font-weight:600;" id="total-points">–</div>
+  </div>
+
+  <div class="grid grid-2" id="breakdown-grid"></div>
+
+  <div class="card" style="margin-top:18px;">
+    <h2>Coach feedback</h2>
+    <div id="feedback-list"><p class="muted">Loading…</p></div>
+  </div>
+
+</div>
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/shell.js"></script>
+<script>
+function bar(label, value, max) {
+  const pct = max > 0 ? Math.min(100, Math.round((value / max) * 100)) : 0;
+  return `<div class="card">
+    <div class="flex between" style="margin-bottom:8px;"><strong style="font-size:0.88rem;">${label}</strong><span class="muted" style="font-size:0.84rem;">${value} pts</span></div>
+    <div class="progress"><span style="width:${pct}%;"></span></div>
+  </div>`;
+}
+
+async function loadReport(childId) {
+  try {
+    const p = await IITS.api(`/api/parent/children/${childId}/pa_jsK`);
+    document.getElementById("total-points").textContent = p.total;
+    const maxRef = Math.max(p.role_points, p.achievement_points, p.attendance_points, p.nilam_points, 10);
+    document.getElementById("breakdown-grid").innerHTML =
+      bar("AJK role points", p.role_points, maxRef) + bar("Achievement points", p.achievement_points, maxRef) +
+      bar("Attendance points", p.attendance_points, maxRef) + bar("NILAM points", p.nilam_points, maxRef);
+  } catch (e) { IITS.toast(e.message, "error"); }
+
+  try {
+    const feedback = await IITS.api(`/api/parent/children/${childId}/feedback`);
+    document.getElementById("feedback-list").innerHTML = feedback.length
+      ? feedback.map(f => `<div class="flex between" style="padding:8px 0;border-bottom:1px solid var(--border);"><span style="font-size:0.86rem;">${f.comment || "(no comment)"}</span>${f.points_awarded != null ? `<span class="badge badge-yellow">+${f.points_awarded}</span>` : ""}</div>`).join("")
+      : `<p class="muted">No feedback yet.</p>`;
+  } catch (e) { IITS.toast(e.message, "error"); }
+}
+
+async function populateChildSwitcher(preselect) {
+  const children = await IITS.api("/api/parent/children");
+  const select = document.getElementById("child-select");
+  select.innerHTML = children.map(c => `<option value="${c.student_id}">${c.full_name}</option>`).join("");
+  if (preselect) select.value = preselect;
+  select.addEventListener("change", () => loadReport(select.value));
+  return select.value || (children[0] && children[0].student_id);
+}
+
+document.addEventListener("iits:shell-ready", async () => {
+  const params = new URLSearchParams(location.search);
+  const childFromUrl = params.get("child");
+  const nameFromUrl = params.get("name");
+  if (nameFromUrl) document.getElementById("page-heading").textContent = `PAJSK standing — ${decodeURIComponent(nameFromUrl)}`;
+  const childId = await populateChildSwitcher(childFromUrl) || childFromUrl;
+  if (childId) loadReport(childId);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dashboard · IITS Coach</title>
+<link rel="stylesheet" href="/shared/css/styles.css">
+</head>
+<body data-role="coach" data-active="dashboard" data-title="Dashboard">
+<div id="page-root">
+
+  <div class="page-head"><div><h1>Hi, <span id="greet-name">Coach</span></h1><p>Your clubs at a glance.</p></div></div>
+
+  <div id="clubs-grid" class="grid grid-3"><div class="loading-row"><span class="spinner"></span> Loading your clubs…</div></div>
+
+  <div class="card" style="margin-top:18px;">
+    <div class="section-head"><h2>Quick actions</h2></div>
+    <div class="flex gap-8 wrap">
+      <a class="btn btn-primary" href="/coach/attendance.html">Take attendance</a>
+      <a class="btn btn-secondary" href="/coach/achievements.html">Record an achievement</a>
+      <a class="btn btn-secondary" href="/coach/tasks.html">Create a task</a>
+    </div>
+  </div>
+
+</div>
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/shell.js"></script>
+<script>
+document.addEventListener("iits:shell-ready", async () => {
+  const user = IITS.getUser();
+  document.getElementById("greet-name").textContent = (user && user.full_name) ? user.full_name.split(" ")[0] : "Coach";
+  try {
+    const clubs = await IITS.api("/api/clubs");
+    const mine = clubs.filter(c => c.coach_id === user.id);
+    const grid = document.getElementById("clubs-grid");
+    grid.innerHTML = mine.length
+      ? mine.map(c => `<div class="card"><span class="badge badge-blue">${c.category || "Club"}</span><h3 style="margin-top:10px;">${c.name}</h3><p style="font-size:0.85rem;">${c.description || "No description."}</p></div>`).join("")
+      : `<div class="empty-state" style="grid-column:1/-1;"><div class="title">No clubs assigned yet</div>Ask your school admin to assign you to a club.</div>`;
+  } catch (e) { IITS.toast(e.message, "error"); }
+});
+</script>
+</body>
+</html>

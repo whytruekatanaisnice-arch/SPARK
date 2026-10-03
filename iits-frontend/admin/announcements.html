@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Announcements · IITS Admin</title>
+<link rel="stylesheet" href="/shared/css/styles.css">
+</head>
+<body data-role="admin" data-active="announcements" data-title="Announcements">
+<div id="page-root">
+
+  <div class="page-head">
+    <div><h1>Announcements</h1><p>Send school-wide or targeted updates to students, parents, or coaches.</p></div>
+    <button class="btn btn-primary" id="new-btn">+ New announcement</button>
+  </div>
+
+  <div id="announcements-list"><div class="loading-row"><span class="spinner"></span> Loading announcements…</div></div>
+</div>
+
+<div class="modal-backdrop" id="ann-modal">
+  <div class="modal">
+    <div class="modal-head"><h2>New announcement</h2><button class="modal-close" id="modal-close">✕</button></div>
+    <form id="ann-form">
+      <div class="field"><label for="title">Title</label><input type="text" id="title" required placeholder="e.g. Sports Day Postponed"></div>
+      <div class="field"><label for="body">Message</label><textarea id="body" rows="4" required></textarea></div>
+      <div class="field"><label>Audience</label>
+        <div class="checkbox-row" style="margin-bottom:6px;"><input type="checkbox" id="role-all" checked> <label for="role-all" style="margin:0;font-weight:500;">Everyone</label></div>
+        <div id="role-checks" style="display:none;display:flex;gap:16px;">
+          <span class="checkbox-row"><input type="checkbox" class="role-box" value="student"> Students</span>
+          <span class="checkbox-row"><input type="checkbox" class="role-box" value="parent"> Parents</span>
+          <span class="checkbox-row"><input type="checkbox" class="role-box" value="coach"> Coaches</span>
+        </div>
+      </div>
+      <div class="flex gap-8" style="justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary" id="cancel-btn">Cancel</button>
+        <button type="submit" class="btn btn-primary">Publish</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/shell.js"></script>
+<script>
+function timeAgo(iso) {
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (diff < 3600) return Math.max(1, Math.round(diff / 60)) + "m ago";
+  if (diff < 86400) return Math.round(diff / 3600) + "h ago";
+  return Math.round(diff / 86400) + "d ago";
+}
+
+async function loadAnnouncements() {
+  const list = document.getElementById("announcements-list");
+  try {
+    const items = await IITS.api("/api/announcements");
+    if (!items.length) { list.innerHTML = `<div class="card empty-state"><div class="title">No announcements yet</div>Post your first update above.</div>`; return; }
+    list.innerHTML = items.map(a => `
+      <div class="card">
+        <div class="flex between" style="align-items:flex-start;">
+          <h3>${a.title}</h3>
+          <div class="flex gap-8">
+            ${(a.target_roles || ["everyone"]).map(r => `<span class="badge badge-blue">${r}</span>`).join("")}
+            <button class="btn btn-ghost btn-sm" onclick="deleteAnn('${a.id}')">Delete</button>
+          </div>
+        </div>
+        <p>${a.body}</p>
+        <div class="muted" style="font-size:0.78rem;">${timeAgo(a.published_at)}</div>
+      </div>`).join("");
+  } catch (e) { IITS.toast(e.message, "error"); }
+}
+
+async function deleteAnn(id) {
+  if (!confirm("Delete this announcement?")) return;
+  try { await IITS.api(`/api/admin/announcements/${id}`, { method: "DELETE" }); loadAnnouncements(); }
+  catch (e) { IITS.toast(e.message, "error"); }
+}
+
+function openModal() { document.getElementById("ann-modal").classList.add("open"); }
+function closeModal() { document.getElementById("ann-modal").classList.remove("open"); document.getElementById("ann-form").reset(); document.getElementById("role-checks").style.display = "none"; }
+
+document.addEventListener("iits:shell-ready", () => {
+  loadAnnouncements();
+  document.getElementById("new-btn").addEventListener("click", openModal);
+  document.getElementById("modal-close").addEventListener("click", closeModal);
+  document.getElementById("cancel-btn").addEventListener("click", closeModal);
+  document.getElementById("role-all").addEventListener("change", (e) => {
+    document.getElementById("role-checks").style.display = e.target.checked ? "none" : "flex";
+  });
+
+  document.getElementById("ann-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const everyone = document.getElementById("role-all").checked;
+    const target_roles = everyone ? null : [...document.querySelectorAll(".role-box:checked")].map(b => b.value);
+    const payload = { title: document.getElementById("title").value.trim(), body: document.getElementById("body").value.trim(), target_roles: (target_roles && target_roles.length) ? target_roles : null };
+    try { await IITS.api("/api/admin/announcements", { method: "POST", body: payload }); IITS.toast("Announcement published", "success"); closeModal(); loadAnnouncements(); }
+    catch (err) { IITS.toast(err.message, "error"); }
+  });
+});
+</script>
+</body>
+</html>

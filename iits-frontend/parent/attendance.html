@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Attendance · IITS Parent</title>
+<link rel="stylesheet" href="/shared/css/styles.css">
+</head>
+<body data-role="parent" data-active="attendance" data-title="Attendance">
+<div id="page-root">
+
+  <div class="page-head"><div><h1 id="page-heading">Attendance</h1><p>Your child's attendance record, most recent first.</p></div></div>
+
+  <div class="field" style="max-width:280px;display:none;" id="child-switcher-wrap">
+    <label for="child-select">Viewing</label>
+    <select id="child-select"></select>
+  </div>
+
+  <div class="table-wrap" style="margin-top:12px;">
+    <table>
+      <thead><tr><th>Date</th><th>Status</th><th>Note</th></tr></thead>
+      <tbody id="attendance-tbody"><tr><td colspan="3"><div class="loading-row"><span class="spinner"></span> Loading…</div></td></tr></tbody>
+    </table>
+  </div>
+
+</div>
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/shell.js"></script>
+<script>
+function statusBadge(status) {
+  const map = { present: "green", late: "yellow", excused: "blue", absent: "red" };
+  return `<span class="badge badge-${map[status] || "grey"}">${status}</span>`;
+}
+
+async function loadAttendance(childId) {
+  const tbody = document.getElementById("attendance-tbody");
+  tbody.innerHTML = `<tr><td colspan="3"><div class="loading-row"><span class="spinner"></span> Loading…</div></td></tr>`;
+  try {
+    const records = await IITS.api(`/api/parent/children/${childId}/attendance`);
+    tbody.innerHTML = records.length
+      ? records.map(r => `<tr><td>${r.session_date}</td><td>${statusBadge(r.status)}</td><td class="muted">${r.note || "—"}</td></tr>`).join("")
+      : `<tr><td colspan="3"><div class="empty-state"><div class="title">No attendance records yet</div></div></td></tr>`;
+  } catch (e) { IITS.toast(e.message, "error"); }
+}
+
+async function populateChildSwitcher(preselect) {
+  const children = await IITS.api("/api/parent/children");
+  const select = document.getElementById("child-select");
+  const wrap = document.getElementById("child-switcher-wrap");
+  if (children.length > 1) {
+    wrap.style.display = "block";
+    select.innerHTML = children.map(c => `<option value="${c.student_id}">${c.full_name}</option>`).join("");
+    if (preselect) select.value = preselect;
+    select.addEventListener("change", () => loadAttendance(select.value));
+  }
+  return select.value || (children[0] && children[0].student_id);
+}
+
+document.addEventListener("iits:shell-ready", async () => {
+  const params = new URLSearchParams(location.search);
+  const childFromUrl = params.get("child");
+  const nameFromUrl = params.get("name");
+  if (nameFromUrl) document.getElementById("page-heading").textContent = `Attendance — ${decodeURIComponent(nameFromUrl)}`;
+
+  const childId = await populateChildSwitcher(childFromUrl) || childFromUrl;
+  if (childId) loadAttendance(childId);
+});
+</script>
+</body>
+</html>

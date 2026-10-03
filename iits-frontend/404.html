@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page not found · IITS</title>
+<link rel="stylesheet" href="/shared/css/styles.css">
+</head>
+<body>
+<div class="status-page">
+  <div>
+    <div class="code">404</div>
+    <h2 style="margin-top:10px;">This page doesn't exist</h2>
+    <p style="max-width:360px;margin:8px auto 20px;">Check the link you followed, or head back to your dashboard.</p>
+    <a class="btn btn-primary" href="/login.html" id="home-link">Back to login</a>
+  </div>
+</div>
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script>
+  const u = IITS.getUser();
+  if (u && IITS.getToken()) {
+    document.getElementById("home-link").href = `/${u.role}/dashboard.html`;
+    document.getElementById("home-link").textContent = "Back to my dashboard";
+  }
+</script>
+</body>
+</html>

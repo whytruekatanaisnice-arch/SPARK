@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Venues · IITS Admin</title>
+<link rel="stylesheet" href="/shared/css/styles.css">
+</head>
+<body data-role="admin" data-active="venues" data-title="Venues">
+<div id="page-root">
+
+  <div class="page-head">
+    <div><h1>Venues</h1><p>Keep one list of classrooms and fields so "which club goes where" is never ambiguous.</p></div>
+    <button class="btn btn-primary" id="new-venue-btn">+ New venue</button>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Venue</th><th>Capacity</th><th>Notes</th><th></th></tr></thead>
+      <tbody id="venues-tbody"><tr><td colspan="4"><div class="loading-row"><span class="spinner"></span> Loading venues…</div></td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="venue-modal">
+  <div class="modal">
+    <div class="modal-head"><h2>New venue</h2><button class="modal-close" id="modal-close">✕</button></div>
+    <form id="venue-form">
+      <div class="field"><label for="name">Name</label><input type="text" id="name" required placeholder="e.g. Classroom 2B, Field A"></div>
+      <div class="field"><label for="capacity">Capacity (optional)</label><input type="number" id="capacity" min="1"></div>
+      <div class="field"><label for="notes">Notes (optional)</label><textarea id="notes" rows="2"></textarea></div>
+      <div class="flex gap-8" style="justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary" id="cancel-btn">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save venue</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/shell.js"></script>
+<script>
+async function loadVenues() {
+  const tbody = document.getElementById("venues-tbody");
+  try {
+    const venues = await IITS.api("/api/admin/venues");
+    if (!venues.length) { tbody.innerHTML = `<tr><td colspan="4"><div class="empty-state"><div class="title">No venues yet</div>Add classrooms and fields as you set up clubs.</div></td></tr>`; return; }
+    tbody.innerHTML = venues.map(v => `
+      <tr>
+        <td>${v.name}</td>
+        <td>${v.capacity ?? "—"}</td>
+        <td class="muted">${v.notes || "—"}</td>
+        <td><button class="btn btn-danger btn-sm" onclick="deleteVenue('${v.id}')">Delete</button></td>
+      </tr>`).join("");
+  } catch (e) { IITS.toast(e.message, "error"); }
+}
+
+async function deleteVenue(id) {
+  if (!confirm("Delete this venue? Clubs assigned to it will need a new venue.")) return;
+  try { await IITS.api(`/api/admin/venues/${id}`, { method: "DELETE" }); IITS.toast("Venue deleted", "success"); loadVenues(); }
+  catch (e) { IITS.toast(e.message, "error"); }
+}
+
+function openModal() { document.getElementById("venue-modal").classList.add("open"); }
+function closeModal() { document.getElementById("venue-modal").classList.remove("open"); document.getElementById("venue-form").reset(); }
+
+document.addEventListener("iits:shell-ready", () => {
+  loadVenues();
+  document.getElementById("new-venue-btn").addEventListener("click", openModal);
+  document.getElementById("modal-close").addEventListener("click", closeModal);
+  document.getElementById("cancel-btn").addEventListener("click", closeModal);
+  document.getElementById("venue-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const payload = {
+      name: document.getElementById("name").value.trim(),
+      capacity: document.getElementById("capacity").value ? parseInt(document.getElementById("capacity").value) : null,
+      notes: document.getElementById("notes").value.trim() || null,
+    };
+    try { await IITS.api("/api/admin/venues", { method: "POST", body: payload }); IITS.toast("Venue created", "success"); closeModal(); loadVenues(); }
+    catch (err) { IITS.toast(err.message, "error"); }
+  });
+});
+</script>
+</body>
+</html>

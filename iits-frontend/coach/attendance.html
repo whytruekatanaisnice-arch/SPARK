@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Attendance · IITS Coach</title>
+<link rel="stylesheet" href="/shared/css/styles.css">
+<style>
+  .student-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .student-row:last-child { border-bottom: none; }
+  .student-row .name { flex: 1; font-weight: 600; font-size: 0.9rem; }
+  .status-pills { display: flex; gap: 6px; }
+  .status-pill {
+    padding: 7px 11px; border-radius: 999px; font-size: 0.74rem; font-weight: 700; border: 1px solid var(--border);
+    background: var(--surface); color: var(--muted); cursor: pointer;
+  }
+  .status-pill[data-status="present"].on { background: var(--success-bg); color: var(--success); border-color: var(--success); }
+  .status-pill[data-status="late"].on { background: var(--warning-bg); color: var(--warning); border-color: var(--warning); }
+  .status-pill[data-status="excused"].on { background: #E7EDFB; color: var(--primary); border-color: var(--primary); }
+  .status-pill[data-status="absent"].on { background: var(--danger-bg); color: var(--danger); border-color: var(--danger); }
+  #qr-reader { width: 100%; max-width: 360px; margin: 0 auto 14px; border-radius: var(--radius-card); overflow: hidden; }
+</style>
+</head>
+<body data-role="coach" data-active="attendance" data-title="Attendance">
+<div id="page-root">
+
+  <div class="page-head">
+    <div><h1>Take attendance</h1><p>Pick a club and date, then mark each student in one tap.</p></div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;">
+    <div class="form-row" style="margin:0;align-items:flex-end;">
+      <div class="field" style="margin:0;"><label for="club-select">Club</label><select id="club-select"></select></div>
+      <div class="field" style="margin:0;max-width:170px;"><label for="date-input">Date</label><input type="date" id="date-input"></div>
+      <button class="btn btn-secondary" id="start-session-btn">Start session</button>
+    </div>
+  </div>
+
+  <div id="session-area" style="display:none;">
+    <div class="tabs">
+      <div class="tab active" data-mode="checklist">1-click checklist</div>
+      <div class="tab" data-mode="qr">QR scan</div>
+    </div>
+
+    <div id="qr-mode" style="display:none;">
+      <div id="qr-reader"></div>
+      <p class="muted" style="text-align:center;font-size:0.82rem;">Point the camera at a student's QR code. Each scan marks them present instantly.</p>
+    </div>
+
+    <div class="card" style="padding:0;" id="checklist-card">
+      <div class="flex between" style="padding:14px 16px;border-bottom:1px solid var(--border);">
+        <strong id="roster-count" style="font-size:0.85rem;">0 students</strong>
+        <button class="btn btn-secondary btn-sm" id="mark-all-present">Mark all present</button>
+      </div>
+      <div id="roster-list"></div>
+    </div>
+
+    <button class="btn btn-primary" id="save-attendance-btn" style="width:100%;margin-top:14px;">Save attendance</button>
+  </div>
+
+</div>
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/shell.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<script>
+let roster = [];       // [{id, full_name, student_number}]
+let marks = {};         // student_id -> {status, marked_via}
+let currentSessionId = null;
+let qrScanner = null;
+
+const STATUSES = [
+  { key: "present", label: "Present" },
+  { key: "late", label: "Late" },
+  { key: "excused", label: "Excused" },
+  { key: "absent", label: "Absent" },
+];
+
+function renderRoster() {
+  document.getElementById("roster-count").textContent = `${roster.length} student${roster.length === 1 ? "" : "s"}`;
+  document.getElementById("roster-list").innerHTML = roster.map(s => `
+    <div class="student-row">
+      <div class="name">${s.full_name}<div class="muted" style="font-weight:400;font-size:0.76rem;">${s.student_number || ""}</div></div>
+      <div class="status-pills" data-student="${s.id}">
+        ${STATUSES.map(st => `<button type="button" class="status-pill ${marks[s.id]?.status === st.key ? "on" : ""}" data-status="${st.key}">${st.label}</button>`).join("")}
+      </div>
+    </div>`).join("");
+
+  document.querySelectorAll(".status-pills").forEach(group => {
+    group.addEventListener("click", (e) => {
+      const btn = e.target.closest(".status-pill");
+      if (!btn) return;
+      const sid = group.dataset.student;
+      marks[sid] = { status: btn.dataset.status, marked_via: "checklist" };
+      group.querySelectorAll(".status-pill").forEach(p => p.classList.toggle("on", p === btn));
+    });
+  });
+}
+
+async function loadMyClubs() {
+  const user = IITS.getUser();
+  const clubs = await IITS.api("/api/clubs");
+  const mine = clubs.filter(c => c.coach_id === user.id);
+  const select = document.getElementById("club-select");
+  select.innerHTML = mine.map(c => `<option value="${c.id}">${c.name}</option>`).join("") || `<option value="">No clubs assigned</option>`;
+}
+
+async function startSession() {
+  const clubId = document.getElementById("club-select").value;
+  const date = document.getElementById("date-input").value;
+  if (!clubId || !date) { IITS.toast("Pick a club and date first", "error"); return; }
+
+  try {
+    const session = await IITS.api("/api/coach/attendance/sessions", { method: "POST", body: { club_id: clubId, session_date: date } });
+    currentSessionId = session.id;
+    roster = await IITS.api(`/api/coach/clubs/${clubId}/roster`);
+    marks = {};
+    renderRoster();
+    document.getElementById("session-area").style.display = "block";
+    IITS.toast("Session started — mark students below", "success");
+  } catch (e) { IITS.toast(e.message, "error"); }
+}
+
+async function saveAttendance() {
+  if (!currentSessionId) return;
+  const records = Object.entries(marks).map(([student_id, m]) => ({ student_id, status: m.status, marked_via: m.marked_via }));
+  if (!records.length) { IITS.toast("Mark at least one student first", "error"); return; }
+  const btn = document.getElementById("save-attendance-btn");
+  btn.disabled = true; btn.textContent = "Saving…";
+  try {
+    await IITS.api(`/api/coach/attendance/sessions/${currentSessionId}/records`, { method: "POST", body: { records } });
+    IITS.toast(`Saved attendance for ${records.length} student(s)`, "success");
+  } catch (e) { IITS.toast(e.message, "error"); }
+  btn.disabled = false; btn.textContent = "Save attendance";
+}
+
+function onQrSuccess(decodedText) {
+  const student = roster.find(s => s.student_number === decodedText || s.id === decodedText);
+  if (!student) { IITS.toast(`No student matches code "${decodedText}"`, "error"); return; }
+  marks[student.id] = { status: "present", marked_via: "qr" };
+  renderRoster();
+  IITS.toast(`${student.full_name} marked present`, "success");
+}
+
+function switchMode(mode) {
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.mode === mode));
+  document.getElementById("qr-mode").style.display = mode === "qr" ? "block" : "none";
+  if (mode === "qr" && !qrScanner && window.Html5Qrcode) {
+    qrScanner = new Html5Qrcode("qr-reader");
+    qrScanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 220 }, onQrSuccess).catch(() => {
+      document.getElementById("qr-mode").innerHTML = `<p class="muted" style="text-align:center;">Camera unavailable. Use the checklist tab instead.</p>`;
+    });
+  } else if (mode !== "qr" && qrScanner) {
+    qrScanner.stop().catch(() => {});
+    qrScanner = null;
+  }
+}
+
+document.addEventListener("iits:shell-ready", async () => {
+  document.getElementById("date-input").value = new Date().toISOString().slice(0, 10);
+  await loadMyClubs();
+  document.getElementById("start-session-btn").addEventListener("click", startSession);
+  document.getElementById("save-attendance-btn").addEventListener("click", saveAttendance);
+  document.getElementById("mark-all-present").addEventListener("click", () => {
+    roster.forEach(s => marks[s.id] = { status: "present", marked_via: "checklist" });
+    renderRoster();
+  });
+  document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => switchMode(t.dataset.mode)));
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>My Clubs · IITS Student</title>
+<link rel="stylesheet" href="/shared/css/styles.css">
+</head>
+<body data-role="student" data-active="clubs" data-title="My Clubs">
+<div id="page-root">
+
+  <div class="page-head"><div><h1>My clubs</h1><p>Your activities, schedule, and committee role.</p></div></div>
+
+  <div id="clubs-list" class="grid grid-2"><div class="loading-row"><span class="spinner"></span> Loading…</div></div>
+
+  <div class="card" style="margin-top:18px;">
+    <h2>Weekly schedule</h2>
+    <div id="schedule-list"><p class="muted">Loading…</p></div>
+  </div>
+
+</div>
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/shell.js"></script>
+<script>
+const DAY_LABELS = { MON: "Monday", TUE: "Tuesday", WED: "Wednesday", THU: "Thursday", FRI: "Friday", SAT: "Saturday", SUN: "Sunday" };
+
+document.addEventListener("iits:shell-ready", async () => {
+  try {
+    const [clubs, roles] = await Promise.all([IITS.api("/api/student/clubs"), IITS.api("/api/student/role")]);
+    const list = document.getElementById("clubs-list");
+    list.innerHTML = clubs.length ? clubs.map(c => {
+      const role = roles.find(r => r.club_id === c.id);
+      return `<div class="card">
+        <span class="badge badge-blue">${c.category || "Club"}</span>
+        <h3 style="margin-top:10px;">${c.name}</h3>
+        <p style="font-size:0.85rem;">${c.description || "No description yet."}</p>
+        ${role ? `<span class="badge badge-yellow">Committee member</span>` : ""}
+      </div>`;
+    }).join("") : `<div class="empty-state" style="grid-column:1/-1;"><div class="title">Not registered to any clubs</div>Ask your school admin to add you.</div>`;
+  } catch (e) { IITS.toast(e.message, "error"); }
+
+  try {
+    const schedule = await IITS.api("/api/student/schedule");
+    const el = document.getElementById("schedule-list");
+    el.innerHTML = schedule.length
+      ? schedule.map(s => `<div class="flex between" style="padding:9px 0;border-bottom:1px solid var(--border);">
+          <span style="font-size:0.88rem;"><strong>${s.club_name}</strong></span>
+          <span class="muted" style="font-size:0.84rem;">${DAY_LABELS[s.day_of_week] || s.day_of_week} · ${s.start_time.slice(0,5)}–${s.end_time.slice(0,5)}</span>
+        </div>`).join("")
+      : `<p class="muted">No scheduled sessions yet.</p>`;
+  } catch (e) { IITS.toast(e.message, "error"); }
+});
+</script>
+</body>
+</html>

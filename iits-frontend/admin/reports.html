@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Reports · IITS Admin</title>
+<link rel="stylesheet" href="/shared/css/styles.css">
+</head>
+<body data-role="admin" data-active="reports" data-title="Reports">
+<div id="page-root">
+
+  <div class="page-head">
+    <div><h1>PAJSK year-end export</h1><p>Generate the final PAJSK dataset for submission — no manual re-entry into the government portal.</p></div>
+  </div>
+
+  <div class="card" style="max-width:520px;">
+    <div class="form-row">
+      <div class="field"><label for="year">Academic year</label>
+        <select id="year"></select>
+      </div>
+      <div class="field"><label for="format">Format</label>
+        <select id="format"><option value="csv">CSV</option><option value="excel">Excel (.xlsx)</option></select>
+      </div>
+    </div>
+    <button class="btn btn-primary" id="export-btn" style="width:100%;">Export PAJSK data</button>
+    <p class="hint" style="margin-top:10px;">Includes role points, achievement points, attendance points, NILAM points, and the total for every student — all calculated automatically.</p>
+  </div>
+
+  <div class="card" style="margin-top:16px;max-width:520px;">
+    <h3>What gets exported</h3>
+    <ul style="padding-left:18px;color:var(--muted);font-size:0.86rem;line-height:1.7;">
+      <li>Student number, name, and class</li>
+      <li>AJK role points (e.g. President, Secretary)</li>
+      <li>Competition achievement points</li>
+      <li>Attendance points (present / late / excused, by config weighting)</li>
+      <li>NILAM reading points</li>
+      <li>Total PAJSK score</li>
+    </ul>
+  </div>
+
+</div>
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/shell.js"></script>
+<script>
+document.addEventListener("iits:shell-ready", () => {
+  const yearSelect = document.getElementById("year");
+  const thisYear = new Date().getFullYear();
+  for (let y = thisYear; y >= thisYear - 3; y--) {
+    const opt = document.createElement("option");
+    opt.value = y; opt.textContent = y;
+    yearSelect.appendChild(opt);
+  }
+
+  document.getElementById("export-btn").addEventListener("click", async () => {
+    const year = yearSelect.value;
+    const format = document.getElementById("format").value;
+    const btn = document.getElementById("export-btn");
+    btn.disabled = true; btn.textContent = "Generating…";
+    try {
+      const ext = format === "excel" ? "xlsx" : "csv";
+      await IITS.downloadFile(`/api/admin/reports/pa_jsK/export?year=${year}&format=${format}`, `pajsk_export_${year}.${ext}`);
+      IITS.toast("Export downloaded", "success");
+    } catch (e) { IITS.toast(e.message || "Export failed", "error"); }
+    btn.disabled = false; btn.textContent = "Export PAJSK data";
+  });
+});
+</script>
+</body>
+</html>

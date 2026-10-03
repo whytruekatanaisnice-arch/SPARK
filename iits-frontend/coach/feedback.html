@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Feedback · IITS Coach</title>
+<link rel="stylesheet" href="/shared/css/styles.css">
+</head>
+<body data-role="coach" data-active="feedback" data-title="Feedback">
+<div id="page-root">
+
+  <div class="page-head"><div><h1 id="page-heading">Review submissions</h1><p>Give feedback and optional bonus points.</p></div></div>
+
+  <div id="submissions-list"><div class="loading-row"><span class="spinner"></span> Loading submissions…</div></div>
+
+</div>
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/shell.js"></script>
+<script>
+function isImage(url) { return /\.(png|jpe?g|gif|webp)$/i.test(url || ""); }
+
+async function loadSubmissions() {
+  const params = new URLSearchParams(location.search);
+  const taskId = params.get("task");
+  const title = params.get("title");
+  if (title) document.getElementById("page-heading").textContent = `Review: ${decodeURIComponent(title)}`;
+  const list = document.getElementById("submissions-list");
+  if (!taskId) { list.innerHTML = `<div class="card empty-state"><div class="title">No task selected</div>Open this page from the Tasks list.</div>`; return; }
+
+  try {
+    const subs = await IITS.api(`/api/coach/submissions?task_id=${taskId}`);
+    if (!subs.length) { list.innerHTML = `<div class="card empty-state"><div class="title">No submissions yet</div>Check back once students submit their work.</div>`; return; }
+    list.innerHTML = subs.map(s => `
+      <div class="card" id="sub-${s.id}">
+        <div class="flex between" style="align-items:flex-start;">
+          <div style="flex:1;">
+            <strong style="font-size:0.88rem;">Student ${s.student_id.slice(0, 8)}</strong>
+            <div class="muted" style="font-size:0.78rem;">${new Date(s.submitted_at).toLocaleString()}</div>
+            ${s.text_content ? `<p style="margin-top:8px;">${s.text_content}</p>` : ""}
+            ${s.file_url ? (isImage(s.file_url) ? `<img src="${s.file_url}" style="max-width:220px;border-radius:8px;margin-top:8px;">` : `<a href="${s.file_url}" target="_blank" rel="noopener">View attached file</a>`) : ""}
+          </div>
+        </div>
+        <div class="divider"></div>
+        <div class="form-row" style="margin:0;align-items:flex-end;">
+          <div class="field" style="margin:0;flex:2;"><textarea placeholder="Feedback comment…" class="fb-comment" rows="2"></textarea></div>
+          <div class="field" style="margin:0;max-width:110px;"><input type="number" class="fb-points" placeholder="Points"></div>
+          <button class="btn btn-primary" onclick="sendFeedback('${s.id}')">Send</button>
+        </div>
+      </div>`).join("");
+  } catch (e) { IITS.toast(e.message, "error"); }
+}
+
+async function sendFeedback(submissionId) {
+  const card = document.getElementById(`sub-${submissionId}`);
+  const comment = card.querySelector(".fb-comment").value.trim();
+  const pointsRaw = card.querySelector(".fb-points").value;
+  try {
+    await IITS.api("/api/coach/feedback", { method: "POST", body: { submission_id: submissionId, comment: comment || null, points_awarded: pointsRaw ? parseInt(pointsRaw) : null } });
+    IITS.toast("Feedback sent", "success");
+  } catch (e) { IITS.toast(e.message, "error"); }
+}
+
+document.addEventListener("iits:shell-ready", loadSubmissions);
+</script>
+</body>
+</html>

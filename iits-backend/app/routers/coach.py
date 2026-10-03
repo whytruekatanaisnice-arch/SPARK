@@ -9,6 +9,7 @@ from app.database import get_db
 from app.models.achievement import Achievement, AchievementRank
 from app.models.club import ClubMembership
 from app.models.notification import Notification
+from app.models.user import StudentProfile, User
 from app.models.progress import ProgressNote
 from app.models.role import RoleType, StudentRole
 from app.models.user import ParentStudentLink
@@ -21,6 +22,24 @@ from app.security import CurrentUser, require_coach
 from app.utils.pa_jsK import recalculate_and_store
 
 router = APIRouter(prefix="/api/coach", tags=["coach"], dependencies=[Depends(require_coach)])
+
+
+# ---------------- Club roster (needed for attendance, roles, achievements) ----------------
+
+@router.get("/clubs/{club_id}/roster")
+async def club_roster(club_id: UUID, db: AsyncSession = Depends(get_db)):
+    """Active members of a club, for attendance checklists / QR lookup / role & achievement pickers."""
+    result = await db.execute(
+        select(User.id, User.full_name, StudentProfile.student_number, StudentProfile.class_name)
+        .join(StudentProfile, StudentProfile.user_id == User.id)
+        .join(ClubMembership, ClubMembership.student_id == User.id)
+        .where(ClubMembership.club_id == club_id, ClubMembership.is_active == True)  # noqa: E712
+        .order_by(User.full_name)
+    )
+    return [
+        {"id": str(sid), "full_name": full_name, "student_number": student_number, "class_name": class_name}
+        for sid, full_name, student_number, class_name in result.all()
+    ]
 
 
 # ---------------- AJK Role assignment ----------------

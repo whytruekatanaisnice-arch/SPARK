@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dashboard · IITS Admin</title>
+<link rel="stylesheet" href="/shared/css/styles.css">
+</head>
+<body data-role="admin" data-active="dashboard" data-title="Dashboard">
+<div id="page-root">
+
+  <div class="page-head">
+    <div>
+      <h1>Good day, <span id="greet-name">Admin</span></h1>
+      <p>Here's how co-curricular activities are running across the school today.</p>
+    </div>
+  </div>
+
+  <div class="grid grid-4" id="stat-cards">
+    <div class="card stat-card"><div class="ribbon"></div><div class="stat-label">Total students</div><div class="stat-value">–</div></div>
+    <div class="card stat-card"><div class="ribbon"></div><div class="stat-label">Total coaches</div><div class="stat-value">–</div></div>
+    <div class="card stat-card"><div class="ribbon"></div><div class="stat-label">Active clubs</div><div class="stat-value">–</div></div>
+    <div class="card stat-card"><div class="ribbon"></div><div class="stat-label">Present today</div><div class="stat-value">–</div></div>
+  </div>
+
+  <div class="grid grid-2" style="margin-top:16px;align-items:start;">
+    <div class="card">
+      <div class="section-head"><h2>Pending tasks</h2></div>
+      <p id="pending-tasks-text">Loading…</p>
+      <a class="btn btn-secondary btn-sm" href="/admin/reports.html">View PAJSK reports</a>
+    </div>
+    <div class="card">
+      <div class="section-head"><h2>Quick actions</h2></div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <a class="btn btn-secondary" href="/admin/users.html">Add a user</a>
+        <a class="btn btn-secondary" href="/admin/clubs.html">Create a club</a>
+        <a class="btn btn-secondary" href="/admin/announcements.html">Post an announcement</a>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/shell.js"></script>
+<script>
+document.addEventListener("iits:shell-ready", async () => {
+  const user = IITS.getUser();
+  document.getElementById("greet-name").textContent = (user && user.full_name) ? user.full_name.split(" ")[0] : "Admin";
+
+  try {
+    const stats = await IITS.api("/api/admin/dashboard");
+    const cards = document.querySelectorAll("#stat-cards .stat-value");
+    cards[0].textContent = stats.total_students;
+    cards[1].textContent = stats.total_coaches;
+    cards[2].textContent = stats.total_clubs;
+    cards[3].textContent = stats.attendance_today;
+    document.getElementById("pending-tasks-text").textContent =
+      stats.pending_tasks > 0
+        ? `${stats.pending_tasks} task${stats.pending_tasks === 1 ? "" : "s"} across all clubs have no submissions yet.`
+        : "No pending tasks — every task has at least one submission.";
+  } catch (e) {
+    IITS.toast(e.message || "Could not load dashboard stats", "error");
+  }
+});
+</script>
+</body>
+</html>

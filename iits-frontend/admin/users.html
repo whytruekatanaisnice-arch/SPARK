@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Users · IITS Admin</title>
+<link rel="stylesheet" href="/shared/css/styles.css">
+</head>
+<body data-role="admin" data-active="users" data-title="Users">
+<div id="page-root">
+
+  <div class="page-head">
+    <div>
+      <h1>Users</h1>
+      <p>Create and manage accounts for coaches, students, and parents.</p>
+    </div>
+    <div class="flex gap-8 wrap">
+      <label class="btn btn-secondary" for="csv-input" style="cursor:pointer;">Bulk import CSV</label>
+      <input type="file" id="csv-input" accept=".csv" style="display:none;">
+      <button class="btn btn-primary" id="new-user-btn">+ New user</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;">
+    <div class="form-row" style="margin:0;">
+      <div class="field" style="margin:0;">
+        <input type="text" id="search-input" placeholder="Search by name or email…">
+      </div>
+      <div class="field" style="max-width:180px;margin:0;">
+        <select id="role-filter">
+          <option value="">All roles</option>
+          <option value="admin">Admin</option>
+          <option value="coach">Coach</option>
+          <option value="student">Student</option>
+          <option value="parent">Parent</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead>
+      <tbody id="users-tbody"><tr><td colspan="5"><div class="loading-row"><span class="spinner"></span> Loading users…</div></td></tr></tbody>
+    </table>
+  </div>
+
+</div>
+
+<!-- Create/edit user modal -->
+<div class="modal-backdrop" id="user-modal">
+  <div class="modal">
+    <div class="modal-head"><h2 id="modal-title">New user</h2><button class="modal-close" id="modal-close">✕</button></div>
+    <form id="user-form">
+      <input type="hidden" id="user-id">
+      <div class="field"><label for="full_name">Full name</label><input type="text" id="full_name" required></div>
+      <div class="field"><label for="email">Email</label><input type="email" id="email" required></div>
+      <div class="field"><label for="role">Role</label>
+        <select id="role" required>
+          <option value="student">Student</option>
+          <option value="coach">Coach</option>
+          <option value="parent">Parent</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+      <div class="field"><label for="phone">Phone (optional)</label><input type="text" id="phone"></div>
+
+      <div id="student-fields">
+        <div class="form-row">
+          <div class="field"><label for="student_number">Student number</label><input type="text" id="student_number"></div>
+          <div class="field"><label for="class_name">Class</label><input type="text" id="class_name" placeholder="e.g. 3 Bestari"></div>
+        </div>
+      </div>
+      <div id="coach-fields" style="display:none;">
+        <div class="form-row">
+          <div class="field"><label for="staff_number">Staff number</label><input type="text" id="staff_number"></div>
+          <div class="field"><label for="subject">Subject taught</label><input type="text" id="subject"></div>
+        </div>
+      </div>
+      <div id="parent-fields" style="display:none;">
+        <div class="field"><label for="child_numbers">Children's student numbers</label>
+          <input type="text" id="child_numbers" placeholder="Comma-separated, e.g. STU001, STU002">
+        </div>
+      </div>
+
+      <p class="hint" style="margin:-4px 0 14px;">A temporary password is generated automatically for new accounts and shown once you save.</p>
+      <div class="flex gap-8" style="justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary" id="cancel-btn">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="save-btn">Save user</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/shell.js"></script>
+<script>
+let allUsers = [];
+
+function badgeForRole(role) {
+  const map = { admin: "blue", coach: "green", student: "yellow", parent: "grey" };
+  return `<span class="badge badge-${map[role] || "grey"}">${role}</span>`;
+}
+
+function renderUsers(users) {
+  const tbody = document.getElementById("users-tbody");
+  if (!users.length) {
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><div class="title">No users found</div>Try a different search or filter.</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = users.map(u => `
+    <tr>
+      <td>${u.full_name}</td>
+      <td>${u.email}</td>
+      <td>${badgeForRole(u.role)}</td>
+      <td>${u.is_active ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-red">Deactivated</span>'}</td>
+      <td class="flex gap-8">
+        <button class="btn btn-secondary btn-sm" onclick="resetPassword('${u.id}')">Reset password</button>
+        <button class="btn btn-danger btn-sm" onclick="deactivateUser('${u.id}')">${u.is_active ? "Deactivate" : "Deactivated"}</button>
+      </td>
+    </tr>`).join("");
+}
+
+async function loadUsers() {
+  const role = document.getElementById("role-filter").value;
+  const q = document.getElementById("search-input").value.trim();
+  const params = new URLSearchParams();
+  if (role) params.set("role", role);
+  if (q) params.set("q", q);
+  try {
+    allUsers = await IITS.api("/api/admin/users?" + params.toString());
+    renderUsers(allUsers);
+  } catch (e) { IITS.toast(e.message, "error"); }
+}
+
+async function resetPassword(id) {
+  if (!confirm("Generate a new temporary password for this user?")) return;
+  try {
+    const res = await IITS.api(`/api/admin/users/${id}/reset-password`, { method: "POST" });
+    IITS.toast(res.detail, "success");
+  } catch (e) { IITS.toast(e.message, "error"); }
+}
+
+async function deactivateUser(id) {
+  if (!confirm("Deactivate this user? They will no longer be able to log in.")) return;
+  try {
+    await IITS.api(`/api/admin/users/${id}`, { method: "DELETE" });
+    IITS.toast("User deactivated", "success");
+    loadUsers();
+  } catch (e) { IITS.toast(e.message, "error"); }
+}
+
+function toggleRoleFields() {
+  const role = document.getElementById("role").value;
+  document.getElementById("student-fields").style.display = role === "student" ? "block" : "none";
+  document.getElementById("coach-fields").style.display = role === "coach" ? "block" : "none";
+  document.getElementById("parent-fields").style.display = role === "parent" ? "block" : "none";
+}
+
+function openModal() {
+  document.getElementById("user-modal").classList.add("open");
+}
+function closeModal() {
+  document.getElementById("user-modal").classList.remove("open");
+  document.getElementById("user-form").reset();
+  toggleRoleFields();
+}
+
+document.addEventListener("iits:shell-ready", () => {
+  loadUsers();
+  document.getElementById("search-input").addEventListener("input", debounce(loadUsers, 350));
+  document.getElementById("role-filter").addEventListener("change", loadUsers);
+  document.getElementById("new-user-btn").addEventListener("click", () => { document.getElementById("modal-title").textContent = "New user"; openModal(); });
+  document.getElementById("modal-close").addEventListener("click", closeModal);
+  document.getElementById("cancel-btn").addEventListener("click", closeModal);
+  document.getElementById("role").addEventListener("change", toggleRoleFields);
+
+  document.getElementById("user-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const payload = {
+      full_name: document.getElementById("full_name").value.trim(),
+      email: document.getElementById("email").value.trim(),
+      role: document.getElementById("role").value,
+      phone: document.getElementById("phone").value.trim() || null,
+      student_number: document.getElementById("student_number").value.trim() || null,
+      class_name: document.getElementById("class_name").value.trim() || null,
+      staff_number: document.getElementById("staff_number").value.trim() || null,
+      subject: document.getElementById("subject").value.trim() || null,
+      child_student_numbers: document.getElementById("child_numbers").value
+        ? document.getElementById("child_numbers").value.split(",").map(s => s.trim()).filter(Boolean)
+        : null,
+    };
+    try {
+      await IITS.api("/api/admin/users", { method: "POST", body: payload });
+      IITS.toast("User created", "success");
+      closeModal();
+      loadUsers();
+    } catch (e2) { IITS.toast(e2.message, "error"); }
+  });
+
+  document.getElementById("csv-input").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const result = await IITS.api("/api/admin/users/bulk-import", { method: "POST", body: formData, isForm: true });
+      IITS.toast(`Imported ${result.created} student(s), skipped ${result.skipped}.`, "success");
+      if (result.errors && result.errors.length) console.warn("Bulk import errors:", result.errors);
+      loadUsers();
+    } catch (err) { IITS.toast(err.message, "error"); }
+    e.target.value = "";
+  });
+});
+
+function debounce(fn, ms) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+</script>
+</body>
+</html>
