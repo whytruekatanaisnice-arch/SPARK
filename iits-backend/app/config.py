@@ -30,6 +30,31 @@ class Settings(BaseSettings):
     # --- CORS ---
     CORS_ORIGINS: str = "http://localhost:5500,http://127.0.0.1:5500"
 
+    # --- Outbound email (temp passwords on account creation / reset) ---
+    # When SMTP_ENABLED is False (the default), emails are logged instead of
+    # sent — lets you develop locally without real SMTP credentials.
+    SMTP_ENABLED: bool = False
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = "no-reply@iits.local"
+    SMTP_FROM_NAME: str = "IITS School System"
+    SMTP_USE_TLS: bool = True
+    FRONTEND_LOGIN_URL: str = "http://localhost:5500/login.html"
+
+    # --- Outbound email (temporary passwords, notifications) ---
+    # If SMTP_HOST is left blank, emails are printed to the server console instead of sent —
+    # handy for local development without a real mail provider.
+    SMTP_HOST: str | None = None
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str | None = None
+    SMTP_PASSWORD: str | None = None
+    SMTP_USE_TLS: bool = True
+    SMTP_FROM_EMAIL: str = "no-reply@iits.local"
+    SMTP_FROM_NAME: str = "IITS"
+    APP_LOGIN_URL: str = "http://localhost:5500/login.html"
+
     # --- Pagination ---
     DEFAULT_PAGE_SIZE: int = 25
     MAX_PAGE_SIZE: int = 200

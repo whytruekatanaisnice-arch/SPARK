@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Announcements · IITS</title>
+<link rel="stylesheet" href="/shared/css/styles.css">
+</head>
+<body>
+<div id="page-root">
+  <div class="page-head"><div><h1>Announcements</h1><p>Updates from your school.</p></div></div>
+  <div id="announcements-list"><div class="loading-row"><span class="spinner"></span> Loading announcements…</div></div>
+</div>
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script>
+const currentUser = IITS.getUser();
+document.body.dataset.role = currentUser?.role || "";
+document.body.dataset.active = "announcements";
+document.body.dataset.title = "Announcements";
+</script>
+<script src="/shared/js/shell.js"></script>
+<script>
+function renderAnnouncements(items) {
+  const list = document.getElementById("announcements-list");
+  list.replaceChildren();
+  if (!items.length) {
+    const empty = document.createElement("div");
+    empty.className = "card empty-state";
+    empty.textContent = "There are no announcements for you right now.";
+    list.append(empty);
+    return;
+  }
+
+  items.forEach(item => {
+    const card = document.createElement("article");
+    card.className = "card";
+    const heading = document.createElement("h2");
+    heading.textContent = item.title;
+    const body = document.createElement("p");
+    body.textContent = item.body;
+    const date = document.createElement("p");
+    date.className = "muted";
+    date.style.fontSize = "0.78rem";
+    date.textContent = new Date(item.published_at).toLocaleString();
+    card.append(heading, body, date);
+    list.append(card);
+  });
+}
+
+document.addEventListener("iits:shell-ready", async () => {
+  try { renderAnnouncements(await IITS.api("/api/announcements")); }
+  catch (e) { IITS.toast(e.message, "error"); }
+});
+</script>
+</body>
+</html>

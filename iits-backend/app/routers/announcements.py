@@ -42,6 +42,18 @@ async def list_announcements(current_user: CurrentUser, db: AsyncSession = Depen
 admin_router = APIRouter(prefix="/api/admin/announcements", tags=["admin:announcements"], dependencies=[Depends(require_admin)])
 
 
+@admin_router.get("", response_model=list[AnnouncementOut])
+async def list_all_announcements(db: AsyncSession = Depends(get_db)):
+    """
+    Unfiltered view for the admin's own management screen — shows every
+    announcement regardless of target_roles, so an admin can see (and edit)
+    something they posted even if they targeted only students/parents/coaches
+    and not their own admin role.
+    """
+    result = await db.execute(select(Announcement).order_by(Announcement.published_at.desc()))
+    return result.scalars().all()
+
+
 @admin_router.post("", response_model=AnnouncementOut, status_code=status.HTTP_201_CREATED)
 async def create_announcement(payload: AnnouncementCreate, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
     announcement = Announcement(**payload.model_dump(), created_by=current_user.id)

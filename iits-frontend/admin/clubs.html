@@ -22,8 +22,9 @@
 
 <div class="modal-backdrop" id="club-modal">
   <div class="modal">
-    <div class="modal-head"><h2>New club</h2><button class="modal-close" id="modal-close">✕</button></div>
+    <div class="modal-head"><h2 id="modal-title">New club</h2><button class="modal-close" id="modal-close">✕</button></div>
     <form id="club-form">
+      <input type="hidden" id="club-id">
       <div class="field"><label for="name">Club name</label><input type="text" id="name" required></div>
       <div class="form-row">
         <div class="field"><label for="category">Category</label>
@@ -35,14 +36,20 @@
       </div>
       <div class="field"><label for="venue_id">Venue</label><select id="venue_id"><option value="">— None —</option></select></div>
       <div class="field"><label for="description">Description</label><textarea id="description" rows="2"></textarea></div>
+      <div class="field" id="active-field" style="display:none;">
+        <label class="checkbox-row"><input type="checkbox" id="is_active"> <span style="font-weight:500;">Active</span></label>
+      </div>
 
-      <label style="font-size:0.82rem;font-weight:600;">Weekly schedule</label>
-      <div id="schedule-rows"></div>
-      <button type="button" class="btn btn-secondary btn-sm" id="add-schedule-row" style="margin:8px 0 16px;">+ Add time slot</button>
+      <div id="schedule-section">
+        <label style="font-size:0.82rem;font-weight:600;">Weekly schedule</label>
+        <div id="schedule-rows"></div>
+        <button type="button" class="btn btn-secondary btn-sm" id="add-schedule-row" style="margin:8px 0 16px;">+ Add time slot</button>
+      </div>
+      <p class="hint" id="edit-schedule-hint" style="display:none;margin:-4px 0 16px;">Schedule can only be set when a club is first created. To change meeting times, deactivate this club and create a new one.</p>
 
       <div class="flex gap-8" style="justify-content:flex-end;">
         <button type="button" class="btn btn-secondary" id="cancel-btn">Cancel</button>
-        <button type="submit" class="btn btn-primary">Save club</button>
+        <button type="submit" class="btn btn-primary" id="save-btn">Save club</button>
       </div>
     </form>
   </div>
@@ -53,7 +60,7 @@
 <script src="/shared/js/api.js"></script>
 <script src="/shared/js/shell.js"></script>
 <script>
-let coaches = [], venues = [];
+let coaches = [], venues = [], clubsCache = [];
 
 function scheduleRowHtml() {
   return `<div class="form-row schedule-row" style="align-items:flex-end;">
@@ -67,8 +74,7 @@ function scheduleRowHtml() {
 }
 
 async function loadLookups() {
-  const users = await IITS.api("/api/admin/users?role=coach");
-  coaches = users;
+  coaches = await IITS.api("/api/admin/users?role=coach");
   venues = await IITS.api("/api/admin/venues");
   document.getElementById("coach_id").innerHTML = '<option value="">— None —</option>' + coaches.map(c => `<option value="${c.id}">${c.full_name}</option>`).join("");
   document.getElementById("venue_id").innerHTML = '<option value="">— None —</option>' + venues.map(v => `<option value="${v.id}">${v.name}</option>`).join("");
@@ -80,11 +86,14 @@ function venueName(id) { const v = venues.find(v => v.id === id); return v ? v.n
 async function loadClubs() {
   const grid = document.getElementById("clubs-grid");
   try {
-    const clubs = await IITS.api("/api/clubs");
-    if (!clubs.length) { grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="title">No clubs yet</div>Create your first club to get started.</div>`; return; }
-    grid.innerHTML = clubs.map(c => `
+    clubsCache = await IITS.api("/api/clubs");
+    if (!clubsCache.length) { grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="title">No clubs yet</div>Create your first club to get started.</div>`; return; }
+    grid.innerHTML = clubsCache.map(c => `
       <div class="card">
-        <span class="badge badge-blue">${c.category || "Club"}</span>
+        <div class="flex between">
+          <span class="badge badge-blue">${c.category || "Club"}</span>
+          <button class="btn btn-ghost btn-sm" onclick="editClub('${c.id}')">Edit</button>
+        </div>
         <h3 style="margin-top:10px;">${c.name}</h3>
         <p style="font-size:0.85rem;">${c.description || "No description yet."}</p>
         <div class="divider"></div>
@@ -94,15 +103,43 @@ async function loadClubs() {
   } catch (e) { IITS.toast(e.message, "error"); }
 }
 
+function editClub(id) {
+  const c = clubsCache.find(x => x.id === id);
+  if (!c) return;
+  document.getElementById("modal-title").textContent = "Edit club";
+  document.getElementById("save-btn").textContent = "Save changes";
+  document.getElementById("club-id").value = c.id;
+  document.getElementById("name").value = c.name;
+  document.getElementById("category").value = c.category || "Club & Society";
+  document.getElementById("coach_id").value = c.coach_id || "";
+  document.getElementById("venue_id").value = c.venue_id || "";
+  document.getElementById("description").value = c.description || "";
+  document.getElementById("is_active").checked = c.is_active;
+  document.getElementById("active-field").style.display = "block";
+  document.getElementById("schedule-section").style.display = "none";
+  document.getElementById("edit-schedule-hint").style.display = "block";
+  openModal();
+}
+
 function openModal() { document.getElementById("club-modal").classList.add("open"); }
-function closeModal() { document.getElementById("club-modal").classList.remove("open"); document.getElementById("club-form").reset(); document.getElementById("schedule-rows").innerHTML = scheduleRowHtml(); }
+function closeModal() {
+  document.getElementById("club-modal").classList.remove("open");
+  document.getElementById("club-form").reset();
+  document.getElementById("club-id").value = "";
+  document.getElementById("schedule-rows").innerHTML = scheduleRowHtml();
+  document.getElementById("modal-title").textContent = "New club";
+  document.getElementById("save-btn").textContent = "Save club";
+  document.getElementById("active-field").style.display = "none";
+  document.getElementById("schedule-section").style.display = "block";
+  document.getElementById("edit-schedule-hint").style.display = "none";
+}
 
 document.addEventListener("iits:shell-ready", async () => {
   document.getElementById("schedule-rows").innerHTML = scheduleRowHtml();
   await loadLookups();
   await loadClubs();
 
-  document.getElementById("new-club-btn").addEventListener("click", openModal);
+  document.getElementById("new-club-btn").addEventListener("click", () => { closeModal(); openModal(); });
   document.getElementById("modal-close").addEventListener("click", closeModal);
   document.getElementById("cancel-btn").addEventListener("click", closeModal);
   document.getElementById("add-schedule-row").addEventListener("click", () => {
@@ -114,22 +151,37 @@ document.addEventListener("iits:shell-ready", async () => {
 
   document.getElementById("club-form").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const schedules = [...document.querySelectorAll(".schedule-row")].map(row => ({
-      day_of_week: row.querySelector(".sch-day").value,
-      start_time: row.querySelector(".sch-start").value,
-      end_time: row.querySelector(".sch-end").value,
-    }));
-    const payload = {
-      name: document.getElementById("name").value.trim(),
-      category: document.getElementById("category").value,
-      coach_id: document.getElementById("coach_id").value || null,
-      venue_id: document.getElementById("venue_id").value || null,
-      description: document.getElementById("description").value.trim() || null,
-      schedules,
-    };
+    const id = document.getElementById("club-id").value;
+
     try {
-      await IITS.api("/api/admin/clubs", { method: "POST", body: payload });
-      IITS.toast("Club created", "success");
+      if (id) {
+        const payload = {
+          name: document.getElementById("name").value.trim(),
+          category: document.getElementById("category").value,
+          coach_id: document.getElementById("coach_id").value || null,
+          venue_id: document.getElementById("venue_id").value || null,
+          description: document.getElementById("description").value.trim() || null,
+          is_active: document.getElementById("is_active").checked,
+        };
+        await IITS.api(`/api/admin/clubs/${id}`, { method: "PATCH", body: payload });
+        IITS.toast("Club updated", "success");
+      } else {
+        const schedules = [...document.querySelectorAll(".schedule-row")].map(row => ({
+          day_of_week: row.querySelector(".sch-day").value,
+          start_time: row.querySelector(".sch-start").value,
+          end_time: row.querySelector(".sch-end").value,
+        }));
+        const payload = {
+          name: document.getElementById("name").value.trim(),
+          category: document.getElementById("category").value,
+          coach_id: document.getElementById("coach_id").value || null,
+          venue_id: document.getElementById("venue_id").value || null,
+          description: document.getElementById("description").value.trim() || null,
+          schedules,
+        };
+        await IITS.api("/api/admin/clubs", { method: "POST", body: payload });
+        IITS.toast("Club created", "success");
+      }
       closeModal();
       loadClubs();
     } catch (err) { IITS.toast(err.message, "error"); }

@@ -19,13 +19,14 @@
 
 <div class="modal-backdrop" id="ann-modal">
   <div class="modal">
-    <div class="modal-head"><h2>New announcement</h2><button class="modal-close" id="modal-close">✕</button></div>
+    <div class="modal-head"><h2 id="modal-title">New announcement</h2><button class="modal-close" id="modal-close">✕</button></div>
     <form id="ann-form">
+      <input type="hidden" id="ann-id">
       <div class="field"><label for="title">Title</label><input type="text" id="title" required placeholder="e.g. Sports Day Postponed"></div>
       <div class="field"><label for="body">Message</label><textarea id="body" rows="4" required></textarea></div>
       <div class="field"><label>Audience</label>
         <div class="checkbox-row" style="margin-bottom:6px;"><input type="checkbox" id="role-all" checked> <label for="role-all" style="margin:0;font-weight:500;">Everyone</label></div>
-        <div id="role-checks" style="display:none;display:flex;gap:16px;">
+        <div id="role-checks" style="display:none;gap:16px;">
           <span class="checkbox-row"><input type="checkbox" class="role-box" value="student"> Students</span>
           <span class="checkbox-row"><input type="checkbox" class="role-box" value="parent"> Parents</span>
           <span class="checkbox-row"><input type="checkbox" class="role-box" value="coach"> Coaches</span>
@@ -33,7 +34,7 @@
       </div>
       <div class="flex gap-8" style="justify-content:flex-end;">
         <button type="button" class="btn btn-secondary" id="cancel-btn">Cancel</button>
-        <button type="submit" class="btn btn-primary">Publish</button>
+        <button type="submit" class="btn btn-primary" id="save-btn">Publish</button>
       </div>
     </form>
   </div>
@@ -44,6 +45,8 @@
 <script src="/shared/js/api.js"></script>
 <script src="/shared/js/shell.js"></script>
 <script>
+let announcementsCache = [];
+
 function timeAgo(iso) {
   const diff = (Date.now() - new Date(iso).getTime()) / 1000;
   if (diff < 3600) return Math.max(1, Math.round(diff / 60)) + "m ago";
@@ -54,14 +57,17 @@ function timeAgo(iso) {
 async function loadAnnouncements() {
   const list = document.getElementById("announcements-list");
   try {
-    const items = await IITS.api("/api/announcements");
-    if (!items.length) { list.innerHTML = `<div class="card empty-state"><div class="title">No announcements yet</div>Post your first update above.</div>`; return; }
-    list.innerHTML = items.map(a => `
+    // Unfiltered admin view — shows everything regardless of who it was targeted at,
+    // so an admin can always see (and edit) announcements they posted.
+    announcementsCache = await IITS.api("/api/admin/announcements");
+    if (!announcementsCache.length) { list.innerHTML = `<div class="card empty-state"><div class="title">No announcements yet</div>Post your first update above.</div>`; return; }
+    list.innerHTML = announcementsCache.map(a => `
       <div class="card">
         <div class="flex between" style="align-items:flex-start;">
           <h3>${a.title}</h3>
           <div class="flex gap-8">
             ${(a.target_roles || ["everyone"]).map(r => `<span class="badge badge-blue">${r}</span>`).join("")}
+            <button class="btn btn-secondary btn-sm" onclick="editAnn('${a.id}')">Edit</button>
             <button class="btn btn-ghost btn-sm" onclick="deleteAnn('${a.id}')">Delete</button>
           </div>
         </div>
@@ -77,12 +83,36 @@ async function deleteAnn(id) {
   catch (e) { IITS.toast(e.message, "error"); }
 }
 
+function editAnn(id) {
+  const a = announcementsCache.find(x => x.id === id);
+  if (!a) return;
+  document.getElementById("modal-title").textContent = "Edit announcement";
+  document.getElementById("save-btn").textContent = "Save changes";
+  document.getElementById("ann-id").value = a.id;
+  document.getElementById("title").value = a.title;
+  document.getElementById("body").value = a.body;
+
+  const everyone = !a.target_roles || !a.target_roles.length;
+  document.getElementById("role-all").checked = everyone;
+  document.getElementById("role-checks").style.display = everyone ? "none" : "flex";
+  document.querySelectorAll(".role-box").forEach(b => b.checked = !everyone && a.target_roles.includes(b.value));
+
+  openModal();
+}
+
 function openModal() { document.getElementById("ann-modal").classList.add("open"); }
-function closeModal() { document.getElementById("ann-modal").classList.remove("open"); document.getElementById("ann-form").reset(); document.getElementById("role-checks").style.display = "none"; }
+function closeModal() {
+  document.getElementById("ann-modal").classList.remove("open");
+  document.getElementById("ann-form").reset();
+  document.getElementById("ann-id").value = "";
+  document.getElementById("role-checks").style.display = "none";
+  document.getElementById("modal-title").textContent = "New announcement";
+  document.getElementById("save-btn").textContent = "Publish";
+}
 
 document.addEventListener("iits:shell-ready", () => {
   loadAnnouncements();
-  document.getElementById("new-btn").addEventListener("click", openModal);
+  document.getElementById("new-btn").addEventListener("click", () => { closeModal(); openModal(); });
   document.getElementById("modal-close").addEventListener("click", closeModal);
   document.getElementById("cancel-btn").addEventListener("click", closeModal);
   document.getElementById("role-all").addEventListener("change", (e) => {
@@ -91,11 +121,21 @@ document.addEventListener("iits:shell-ready", () => {
 
   document.getElementById("ann-form").addEventListener("submit", async (e) => {
     e.preventDefault();
+    const id = document.getElementById("ann-id").value;
     const everyone = document.getElementById("role-all").checked;
     const target_roles = everyone ? null : [...document.querySelectorAll(".role-box:checked")].map(b => b.value);
     const payload = { title: document.getElementById("title").value.trim(), body: document.getElementById("body").value.trim(), target_roles: (target_roles && target_roles.length) ? target_roles : null };
-    try { await IITS.api("/api/admin/announcements", { method: "POST", body: payload }); IITS.toast("Announcement published", "success"); closeModal(); loadAnnouncements(); }
-    catch (err) { IITS.toast(err.message, "error"); }
+    try {
+      if (id) {
+        await IITS.api(`/api/admin/announcements/${id}`, { method: "PATCH", body: payload });
+        IITS.toast("Announcement updated", "success");
+      } else {
+        await IITS.api("/api/admin/announcements", { method: "POST", body: payload });
+        IITS.toast("Announcement published", "success");
+      }
+      closeModal();
+      loadAnnouncements();
+    } catch (err) { IITS.toast(err.message, "error"); }
   });
 });
 </script>

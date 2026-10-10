@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Announcements · IITS Student</title>
+<link rel="stylesheet" href="/shared/css/styles.css">
+</head>
+<body data-role="student" data-active="announcements" data-title="Announcements">
+<div id="page-root">
+
+  <div class="page-head"><div><h1>Announcements</h1><p>School-wide and club updates from your admin.</p></div></div>
+
+  <div id="announcements-list"><div class="loading-row"><span class="spinner"></span> Loading announcements…</div></div>
+
+</div>
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/shell.js"></script>
+<script>
+function timeAgo(iso) {
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (diff < 3600) return Math.max(1, Math.round(diff / 60)) + "m ago";
+  if (diff < 86400) return Math.round(diff / 3600) + "h ago";
+  return Math.round(diff / 86400) + "d ago";
+}
+
+async function loadAnnouncements() {
+  const list = document.getElementById("announcements-list");
+  try {
+    const items = await IITS.api("/api/announcements");
+    list.innerHTML = items.length
+      ? items.map(a => `
+        <div class="card">
+          <div class="flex between" style="align-items:flex-start;">
+            <h3>${a.title}</h3>
+            ${(a.target_roles && a.target_roles.length) ? `<span class="badge badge-blue">${a.target_roles.join(", ")}</span>` : `<span class="badge badge-grey">Everyone</span>`}
+          </div>
+          <p>${a.body}</p>
+          <div class="muted" style="font-size:0.78rem;">${timeAgo(a.published_at)}</div>
+        </div>`).join("")
+      : `<div class="card empty-state"><div class="title">No announcements yet</div>Check back later for updates.</div>`;
+  } catch (e) { IITS.toast(e.message, "error"); }
+}
+
+document.addEventListener("iits:shell-ready", loadAnnouncements);
+</script>
+</body>
+</html>

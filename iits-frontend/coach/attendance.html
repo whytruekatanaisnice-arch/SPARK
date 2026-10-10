@@ -58,6 +58,20 @@
     <button class="btn btn-primary" id="save-attendance-btn" style="width:100%;margin-top:14px;">Save attendance</button>
   </div>
 
+  <div class="modal-backdrop" id="reason-modal">
+    <div class="modal">
+      <div class="modal-head"><h2>Reason for excused absence</h2><button type="button" class="modal-close" id="reason-close">✕</button></div>
+      <form id="reason-form">
+        <p class="muted" id="reason-student-name" style="margin-top:-6px;"></p>
+        <div class="field"><label for="reason-text">Reason</label><textarea id="reason-text" rows="3" required placeholder="e.g. Medical appointment, family emergency…"></textarea></div>
+        <div class="flex gap-8" style="justify-content:flex-end;">
+          <button type="button" class="btn btn-secondary" id="reason-cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save reason</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
 </div>
 <script src="/shared/js/config.js"></script>
 <script src="/shared/js/toast.js"></script>
@@ -80,8 +94,11 @@ const STATUSES = [
 function renderRoster() {
   document.getElementById("roster-count").textContent = `${roster.length} student${roster.length === 1 ? "" : "s"}`;
   document.getElementById("roster-list").innerHTML = roster.map(s => `
-    <div class="student-row">
-      <div class="name">${s.full_name}<div class="muted" style="font-weight:400;font-size:0.76rem;">${s.student_number || ""}</div></div>
+    <div class="student-row" style="flex-wrap:wrap;">
+      <div class="name">
+        ${s.full_name}<div class="muted" style="font-weight:400;font-size:0.76rem;">${s.student_number || ""}</div>
+        ${marks[s.id]?.status === "excused" && marks[s.id]?.note ? `<div class="muted" style="font-size:0.76rem;margin-top:3px;"><strong>Reason:</strong> ${marks[s.id].note}</div>` : ""}
+      </div>
       <div class="status-pills" data-student="${s.id}">
         ${STATUSES.map(st => `<button type="button" class="status-pill ${marks[s.id]?.status === st.key ? "on" : ""}" data-status="${st.key}">${st.label}</button>`).join("")}
       </div>
@@ -92,10 +109,35 @@ function renderRoster() {
       const btn = e.target.closest(".status-pill");
       if (!btn) return;
       const sid = group.dataset.student;
+
+      if (btn.dataset.status === "excused") {
+        // Excused always needs a reason — open the popup instead of marking immediately.
+        // Re-clicking an already-excused student reopens it pre-filled, so the reason can be edited.
+        openReasonModal(sid);
+        return;
+      }
+
       marks[sid] = { status: btn.dataset.status, marked_via: "checklist" };
       group.querySelectorAll(".status-pill").forEach(p => p.classList.toggle("on", p === btn));
     });
   });
+}
+
+let pendingExcuseStudentId = null;
+
+function openReasonModal(studentId) {
+  pendingExcuseStudentId = studentId;
+  const student = roster.find(s => s.id === studentId);
+  document.getElementById("reason-student-name").textContent = student ? student.full_name : "";
+  document.getElementById("reason-text").value = marks[studentId]?.note || "";
+  document.getElementById("reason-modal").classList.add("open");
+  setTimeout(() => document.getElementById("reason-text").focus(), 50);
+}
+
+function closeReasonModal() {
+  document.getElementById("reason-modal").classList.remove("open");
+  document.getElementById("reason-form").reset();
+  pendingExcuseStudentId = null;
 }
 
 async function loadMyClubs() {
@@ -124,7 +166,7 @@ async function startSession() {
 
 async function saveAttendance() {
   if (!currentSessionId) return;
-  const records = Object.entries(marks).map(([student_id, m]) => ({ student_id, status: m.status, marked_via: m.marked_via }));
+  const records = Object.entries(marks).map(([student_id, m]) => ({ student_id, status: m.status, marked_via: m.marked_via, note: m.note || null }));
   if (!records.length) { IITS.toast("Mark at least one student first", "error"); return; }
   const btn = document.getElementById("save-attendance-btn");
   btn.disabled = true; btn.textContent = "Saving…";
@@ -167,6 +209,17 @@ document.addEventListener("iits:shell-ready", async () => {
     renderRoster();
   });
   document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => switchMode(t.dataset.mode)));
+
+  document.getElementById("reason-close").addEventListener("click", closeReasonModal);
+  document.getElementById("reason-cancel").addEventListener("click", closeReasonModal);
+  document.getElementById("reason-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const reason = document.getElementById("reason-text").value.trim();
+    if (!reason) { IITS.toast("Please enter a reason", "error"); return; }
+    marks[pendingExcuseStudentId] = { status: "excused", marked_via: "checklist", note: reason };
+    closeReasonModal();
+    renderRoster();
+  });
 });
 </script>
 </body>

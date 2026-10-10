@@ -1,6 +1,7 @@
 """Admin-only: user management, bulk import, dashboard, PAJSK export, gamification."""
 import csv
 import io
+import logging
 import secrets
 import uuid
 from datetime import date
@@ -16,10 +17,14 @@ from app.models.competition import InterClubCompetition
 from app.models.task import Submission, Task
 from app.models.user import CoachProfile, ParentStudentLink, StudentProfile, User, UserRole
 from app.schemas.common import Message
+from app.schemas.competition import CompetitionOut, CompetitionUpdate
 from app.schemas.report import DashboardStats, LeaderboardEntry
 from app.schemas.user import BulkImportResult, UserCreate, UserListItem, UserUpdate
 from app.security import CurrentUser, hash_password, require_admin
+from app.utils.email import send_password_reset_email, send_welcome_email
 from app.utils.pagination import paginate
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
@@ -74,6 +79,11 @@ async def create_user(payload: UserCreate, db: AsyncSession = Depends(get_db)):
 
     await db.commit()
     await db.refresh(user)
+
+    email_sent = await send_welcome_email(user.email, user.full_name, temp_password, user.role.value)
+    if not email_sent:
+        logger.warning("Welcome email failed to send to %s — temp password: %s", user.email, temp_password)
+
     return user
 
 
@@ -125,8 +135,13 @@ async def reset_password(user_id: uuid.UUID, db: AsyncSession = Depends(get_db))
     temp_password = secrets.token_urlsafe(9)
     user.password_hash = hash_password(temp_password)
     await db.commit()
-    # In production: email/SMS the temp_password to the user instead of returning it.
-    return Message(detail=f"Password reset. Temporary password: {temp_password}")
+
+    email_sent = await send_password_reset_email(user.email, user.full_name, temp_password)
+    if email_sent:
+        return Message(detail=f"Password reset. A new temporary password was emailed to {user.email}.")
+    # SMTP failed (or isn't configured) — fall back to showing it so the admin isn't stuck.
+    logger.warning("Password reset email failed to send to %s — temp password: %s", user.email, temp_password)
+    return Message(detail=f"Password reset, but the email could not be sent. Temporary password: {temp_password}")
 
 
 @router.post("/users/bulk-import", response_model=BulkImportResult)
@@ -139,6 +154,7 @@ async def bulk_import_students(file: UploadFile, db: AsyncSession = Depends(get_
     reader = csv.DictReader(io.StringIO(content))
 
     created, skipped, errors = 0, 0, []
+    pending_emails: list[tuple[str, str, str]] = []
 
     for i, row in enumerate(reader, start=2):  # row 1 = header
         try:
@@ -164,10 +180,17 @@ async def bulk_import_students(file: UploadFile, db: AsyncSession = Depends(get_
                 ic_number=row.get("ic_number", "").strip() or None,
             ))
             created += 1
+            pending_emails.append((email, row["full_name"].strip(), temp_password))
         except Exception as exc:  # noqa: BLE001
             errors.append(f"Row {i}: {exc}")
 
     await db.commit()
+
+    for email, full_name, temp_password in pending_emails:
+        email_sent = await send_welcome_email(email, full_name, temp_password, "student")
+        if not email_sent:
+            errors.append(f"{email}: account created but welcome email failed to send")
+
     return BulkImportResult(created=created, skipped=skipped, errors=errors)
 
 
@@ -209,7 +232,13 @@ async def dashboard(db: AsyncSession = Depends(get_db)):
 
 # ---------------- Gamification ----------------
 
-@router.post("/inter-club-competitions", status_code=status.HTTP_201_CREATED)
+@router.get("/inter-club-competitions", response_model=list[CompetitionOut])
+async def list_competitions(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(InterClubCompetition).order_by(InterClubCompetition.start_date.desc()))
+    return result.scalars().all()
+
+
+@router.post("/inter-club-competitions", status_code=status.HTTP_201_CREATED, response_model=CompetitionOut)
 async def create_competition(
     name: str, description: str | None, start_date: date, end_date: date,
     current_user: CurrentUser, db: AsyncSession = Depends(get_db),
@@ -219,6 +248,28 @@ async def create_competition(
     await db.commit()
     await db.refresh(comp)
     return comp
+
+
+@router.patch("/inter-club-competitions/{competition_id}", response_model=CompetitionOut)
+async def update_competition(competition_id: uuid.UUID, payload: CompetitionUpdate, db: AsyncSession = Depends(get_db)):
+    comp = await db.get(InterClubCompetition, competition_id)
+    if not comp:
+        raise HTTPException(status_code=404, detail="Competition not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(comp, field, value)
+    await db.commit()
+    await db.refresh(comp)
+    return comp
+
+
+@router.delete("/inter-club-competitions/{competition_id}", response_model=Message)
+async def delete_competition(competition_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    comp = await db.get(InterClubCompetition, competition_id)
+    if not comp:
+        raise HTTPException(status_code=404, detail="Competition not found")
+    await db.delete(comp)
+    await db.commit()
+    return Message(detail="Competition deleted")
 
 
 @router.get("/inter-club-competitions/{competition_id}/leaderboard", response_model=list[LeaderboardEntry])

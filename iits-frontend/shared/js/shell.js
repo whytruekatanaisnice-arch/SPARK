@@ -51,6 +51,7 @@
       { label: "Achievements", href: "/coach/achievements.html", key: "achievements", icon: "star" },
       { label: "Tasks", href: "/coach/tasks.html", key: "tasks", icon: "clipboard" },
       { label: "Feedback", href: "/coach/feedback.html", key: "feedback", icon: "chat" },
+      { label: "Announcements", href: "/coach/announcements.html", key: "announcements", icon: "megaphone" },
       { label: "Notifications", href: "/coach/notifications.html", key: "notifications", icon: "bell" },
     ],
     student: [
@@ -59,12 +60,14 @@
       { label: "Tasks", href: "/student/tasks.html", key: "tasks", icon: "clipboard" },
       { label: "PAJSK", href: "/student/pajsk.html", key: "pajsk", icon: "chart" },
       { label: "NILAM", href: "/student/nilam.html", key: "nilam", icon: "book" },
+      { label: "Announcements", href: "/student/announcements.html", key: "announcements", icon: "megaphone" },
       { label: "Profile", href: "/student/profile.html", key: "profile", icon: "user" },
     ],
     parent: [
       { label: "Dashboard", href: "/parent/dashboard.html", key: "dashboard", icon: "home" },
       { label: "Attendance", href: "/parent/attendance.html", key: "attendance", icon: "calendar" },
       { label: "PAJSK Report", href: "/parent/reports.html", key: "reports", icon: "chart" },
+      { label: "Announcements", href: "/parent/announcements.html", key: "announcements", icon: "megaphone" },
       { label: "Notifications", href: "/parent/notifications.html", key: "notifications", icon: "bell" },
     ],
   };

@@ -14,7 +14,7 @@
     <button class="btn btn-primary" id="new-btn">+ New competition</button>
   </div>
 
-  <div id="comp-list"><p class="muted">Create a competition to see its leaderboard here.</p></div>
+  <div id="comp-list"><div class="loading-row"><span class="spinner"></span> Loading competitions…</div></div>
 
   <div class="card" id="leaderboard-card" style="display:none;margin-top:18px;">
     <div class="section-head"><h2 id="lb-title">Leaderboard</h2></div>
@@ -30,8 +30,9 @@
 
 <div class="modal-backdrop" id="comp-modal">
   <div class="modal">
-    <div class="modal-head"><h2>New competition</h2><button class="modal-close" id="modal-close">✕</button></div>
+    <div class="modal-head"><h2 id="modal-title">New competition</h2><button class="modal-close" id="modal-close">✕</button></div>
     <form id="comp-form">
+      <input type="hidden" id="comp-id">
       <div class="field"><label for="name">Name</label><input type="text" id="name" required placeholder="e.g. Best Club of the Month — October"></div>
       <div class="field"><label for="description">Description (optional)</label><textarea id="description" rows="2"></textarea></div>
       <div class="form-row">
@@ -40,7 +41,7 @@
       </div>
       <div class="flex gap-8" style="justify-content:flex-end;">
         <button type="button" class="btn btn-secondary" id="cancel-btn">Cancel</button>
-        <button type="submit" class="btn btn-primary">Create</button>
+        <button type="submit" class="btn btn-primary" id="save-btn">Create</button>
       </div>
     </form>
   </div>
@@ -55,19 +56,27 @@ let competitions = [];
 
 function renderCompetitions() {
   const list = document.getElementById("comp-list");
-  if (!competitions.length) { list.innerHTML = `<p class="muted">Create a competition to see its leaderboard here.</p>`; return; }
+  if (!competitions.length) { list.innerHTML = `<div class="card empty-state"><div class="title">No competitions yet</div>Create one above to start a leaderboard.</div>`; return; }
   list.innerHTML = `<div class="grid grid-3">` + competitions.map(c => `
-    <div class="card" style="cursor:pointer;" onclick="showLeaderboard('${c.id}','${c.name.replace(/'/g, "\\'")}')">
-      <span class="badge badge-yellow">${IITS.icon("trophy")} Competition</span>
-      <h3 style="margin-top:10px;">${c.name}</h3>
+    <div class="card">
+      <div class="flex between">
+        <span class="badge badge-yellow">${IITS.icon("trophy")} Competition</span>
+        <div class="flex gap-8">
+          <button class="btn btn-ghost btn-sm" onclick="editCompetition('${c.id}', event)">Edit</button>
+          <button class="btn btn-ghost btn-sm" onclick="deleteCompetition('${c.id}', event)">Delete</button>
+        </div>
+      </div>
+      <h3 style="margin-top:10px;cursor:pointer;" onclick="showLeaderboard('${c.id}','${c.name.replace(/'/g, "\\'")}')">${c.name}</h3>
       <p class="muted" style="font-size:0.82rem;">${c.start_date} → ${c.end_date}</p>
+      <button class="btn btn-secondary btn-sm" onclick="showLeaderboard('${c.id}','${c.name.replace(/'/g, "\\'")}')" style="margin-top:6px;">View leaderboard</button>
     </div>`).join("") + `</div>`;
 }
 
 async function loadCompetitions() {
-  // No list endpoint is defined in the API for competitions; competitions created
-  // in this session are tracked client-side so you can jump straight to their leaderboard.
-  renderCompetitions();
+  try {
+    competitions = await IITS.api("/api/admin/inter-club-competitions");
+    renderCompetitions();
+  } catch (e) { IITS.toast(e.message, "error"); }
 }
 
 async function showLeaderboard(id, name) {
@@ -90,30 +99,61 @@ async function showLeaderboard(id, name) {
   } catch (e) { IITS.toast(e.message, "error"); }
 }
 
+function editCompetition(id, evt) {
+  if (evt) evt.stopPropagation();
+  const c = competitions.find(x => x.id === id);
+  if (!c) return;
+  document.getElementById("modal-title").textContent = "Edit competition";
+  document.getElementById("save-btn").textContent = "Save changes";
+  document.getElementById("comp-id").value = c.id;
+  document.getElementById("name").value = c.name;
+  document.getElementById("description").value = c.description || "";
+  document.getElementById("start_date").value = c.start_date;
+  document.getElementById("end_date").value = c.end_date;
+  openModal();
+}
+
+async function deleteCompetition(id, evt) {
+  if (evt) evt.stopPropagation();
+  if (!confirm("Delete this competition? Its leaderboard will no longer be accessible.")) return;
+  try { await IITS.api(`/api/admin/inter-club-competitions/${id}`, { method: "DELETE" }); IITS.toast("Competition deleted", "success"); loadCompetitions(); }
+  catch (e) { IITS.toast(e.message, "error"); }
+}
+
 function openModal() { document.getElementById("comp-modal").classList.add("open"); }
-function closeModal() { document.getElementById("comp-modal").classList.remove("open"); document.getElementById("comp-form").reset(); }
+function closeModal() {
+  document.getElementById("comp-modal").classList.remove("open");
+  document.getElementById("comp-form").reset();
+  document.getElementById("comp-id").value = "";
+  document.getElementById("modal-title").textContent = "New competition";
+  document.getElementById("save-btn").textContent = "Create";
+}
 
 document.addEventListener("iits:shell-ready", () => {
   loadCompetitions();
-  document.getElementById("new-btn").addEventListener("click", openModal);
+  document.getElementById("new-btn").addEventListener("click", () => { closeModal(); openModal(); });
   document.getElementById("modal-close").addEventListener("click", closeModal);
   document.getElementById("cancel-btn").addEventListener("click", closeModal);
 
   document.getElementById("comp-form").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const params = new URLSearchParams({
-      name: document.getElementById("name").value.trim(),
-      description: document.getElementById("description").value.trim() || "",
-      start_date: document.getElementById("start_date").value,
-      end_date: document.getElementById("end_date").value,
-    });
+    const id = document.getElementById("comp-id").value;
+    const name = document.getElementById("name").value.trim();
+    const description = document.getElementById("description").value.trim() || null;
+    const start_date = document.getElementById("start_date").value;
+    const end_date = document.getElementById("end_date").value;
+
     try {
-      const comp = await IITS.api("/api/admin/inter-club-competitions?" + params.toString(), { method: "POST" });
-      competitions.push(comp);
-      IITS.toast("Competition created", "success");
+      if (id) {
+        await IITS.api(`/api/admin/inter-club-competitions/${id}`, { method: "PATCH", body: { name, description, start_date, end_date } });
+        IITS.toast("Competition updated", "success");
+      } else {
+        const params = new URLSearchParams({ name, description: description || "", start_date, end_date });
+        await IITS.api("/api/admin/inter-club-competitions?" + params.toString(), { method: "POST" });
+        IITS.toast("Competition created", "success");
+      }
       closeModal();
-      renderCompetitions();
-      showLeaderboard(comp.id, comp.name);
+      loadCompetitions();
     } catch (err) { IITS.toast(err.message, "error"); }
   });
 });
