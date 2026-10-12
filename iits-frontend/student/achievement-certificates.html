@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>PAJSK Certificates · IITS Student</title>
+  <link rel="stylesheet" href="/shared/css/styles.css">
+</head>
+<body data-role="student" data-active="achievement-certificates" data-title="PAJSK Certificates">
+<div id="page-root">
+  <div class="page-head">
+    <div><h1>Competition certificates</h1><p>Submit verified competition certificates for PAJSK review. Scores count only after school approval.</p></div>
+  </div>
+  <div class="grid grid-2" style="align-items:start;">
+    <section class="card" id="certificate-form-content">
+      <h2>Start a submission</h2>
+      <form id="achievement-certificate-form">
+        <input type="hidden" id="draft-id">
+        <div class="field">
+          <label for="certificate-file">Certificate (PDF, JPEG, PNG; max 10 MB)</label>
+          <input id="certificate-file" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png">
+        </div>
+        <label class="flex gap-12" style="align-items:flex-start;margin:12px 0;">
+          <input id="ocr-consent" type="checkbox" required style="margin-top:4px;">
+          <span>I understand this certificate will be sent to OCR.space for text extraction.</span>
+        </label>
+        <button class="btn btn-secondary" id="run-ocr" type="button">Upload and extract certificate text</button>
+        <p id="ocr-status" class="muted" style="margin-top:10px;" aria-live="polite"></p>
+        <div class="field" style="margin-top:12px;">
+          <label for="ocr-text">Text extracted by OCR — compare this with the original</label>
+          <pre id="ocr-text" style="white-space:pre-wrap;max-height:220px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:12px;">Upload a certificate and run OCR to review its text.</pre>
+        </div>
+        <hr>
+        <h3>Confirm the certificate details</h3>
+        <div class="field"><label for="event-name">Event / competition name</label><input id="event-name" name="event_name" required minlength="3" maxlength="255"></div>
+        <div class="field"><label for="organizer">Organizer</label><input id="organizer" name="organizer" required minlength="2" maxlength="255"></div>
+        <div class="field"><label for="awardee-name">Student name shown on certificate</label><input id="awardee-name" name="awardee_name" required minlength="2" maxlength="255"></div>
+        <div class="field"><label for="event-date">Event date</label><input id="event-date" name="event_date" type="date" required></div>
+        <div class="field"><label for="competition-level">Competition level</label><select id="competition-level" name="competition_level" required><option value="">Select level</option></select></div>
+        <div class="field"><label for="participation-type">Participation category</label><select id="participation-type" name="participation_type" required><option value="">Select category</option></select></div>
+        <div class="field"><label for="placement">Placement (if ranked)</label><select id="placement" name="placement" required></select></div>
+        <div class="card" id="score-preview" aria-live="polite" style="margin:12px 0;">Choose a level and participation type to preview points.</div>
+        <label class="flex gap-12" style="align-items:flex-start;margin:14px 0;">
+          <input id="confirmed-details" name="confirmed_details" type="checkbox" required style="margin-top:4px;">
+          <span>I checked every field against the original certificate and confirm the student, event, date, organizer, level, participation category, and placement are correct.</span>
+        </label>
+        <button class="btn btn-primary" type="submit">Submit for school approval</button>
+      </form>
+    </section>
+    <section>
+      <h2 style="margin-bottom:10px;">My submissions</h2>
+      <div id="submission-list"><div class="loading-row"><span class="spinner"></span> Loading submissions…</div></div>
+    </section>
+  </div>
+</div>
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/shell.js"></script>
+<script src="/shared/js/achievement-certificates.js"></script>
+</body>
+</html>

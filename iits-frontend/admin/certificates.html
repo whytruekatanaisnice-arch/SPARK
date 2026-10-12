@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Certificates · IITS Admin</title>
+<link rel="stylesheet" href="/shared/css/styles.css">
+</head>
+<body data-role="admin" data-active="certificates" data-title="Certificates">
+<div id="page-root">
+
+  <div class="page-head"><div><h1>Certificate approvals</h1><p>Review certificates from students and parents. Approving marks the absence as Excused and updates PAJSK automatically.</p></div></div>
+
+  <div class="tabs" id="status-tabs">
+    <div class="tab active" data-status="pending">Pending</div>
+    <div class="tab" data-status="approved">Approved</div>
+    <div class="tab" data-status="rejected">Rejected</div>
+    <div class="tab" data-status="all">All</div>
+  </div>
+
+  <div id="cert-list"><div class="loading-row"><span class="spinner"></span> Loading…</div></div>
+
+</div>
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/shell.js"></script>
+<script>
+const STATUS_BADGE = { pending: "badge-yellow", approved: "badge-green", rejected: "badge-red" };
+let currentStatus = "pending";
+
+function isImage(url) { return /\.(png|jpe?g|gif|webp)$/i.test(url || ""); }
+
+async function loadCerts() {
+  const list = document.getElementById("cert-list");
+  list.innerHTML = `<div class="loading-row"><span class="spinner"></span> Loading…</div>`;
+  try {
+    const items = await IITS.api(`/api/admin/certificates?status_filter=${currentStatus}`);
+    if (!items.length) { list.innerHTML = `<div class="card empty-state"><div class="title">Nothing here</div>${currentStatus === "pending" ? "No certificates are waiting for review." : "No certificates match this filter."}</div>`; return; }
+    list.innerHTML = items.map(c => `
+      <div class="card" id="cert-${c.id}">
+        <div class="flex between" style="align-items:flex-start;gap:12px;">
+          <div style="flex:1;min-width:0;">
+            <h3>${c.student_name || "Student"} <span class="muted" style="font-size:0.8rem;font-weight:400;">${c.student_number || ""}</span></h3>
+            <div class="muted" style="font-size:0.82rem;">${c.club_name || "General absence"}${c.session_date ? " · " + c.session_date : ""} · submitted by ${c.submitted_by_name || "—"}</div>
+            <p style="margin:10px 0 6px;">${c.reason}</p>
+            ${c.file_url ? (isImage(c.file_url) ? `<a href="${c.file_url}" target="_blank" rel="noopener"><img src="${c.file_url}" style="max-width:240px;border-radius:8px;border:1px solid var(--border);"></a>` : `<a href="${c.file_url}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">Open uploaded file</a>`) : `<span class="muted" style="font-size:0.8rem;">No file attached</span>`}
+          </div>
+          <span class="badge ${STATUS_BADGE[c.status] || "badge-grey"}">${c.status}</span>
+        </div>
+        ${c.status === "pending" ? `
+          <div class="divider"></div>
+          <div class="form-row" style="margin:0;align-items:flex-end;">
+            <div class="field" style="margin:0;flex:2;"><label>Note to student/parent (optional)</label><input type="text" class="review-note" placeholder="e.g. Approved — get well soon"></div>
+            <button class="btn btn-primary" onclick="review('${c.id}','approved')">Approve</button>
+            <button class="btn btn-danger" onclick="review('${c.id}','rejected')">Reject</button>
+          </div>` : (c.review_note ? `<div class="muted" style="font-size:0.82rem;margin-top:8px;"><strong>Note:</strong> ${c.review_note}</div>` : "")}
+      </div>`).join("");
+  } catch (e) { IITS.toast(e.message, "error"); }
+}
+
+async function review(id, status) {
+  const note = document.querySelector(`#cert-${id} .review-note`).value.trim();
+  if (status === "rejected" && !note && !confirm("Reject without a note? The family won't know why.")) return;
+  try {
+    await IITS.api(`/api/admin/certificates/${id}`, { method: "PATCH", body: { status, review_note: note || null } });
+    IITS.toast(status === "approved" ? "Approved — absence excused, family notified" : "Rejected — family notified", "success");
+    loadCerts();
+    IITS.refreshBadges();
+  } catch (e) { IITS.toast(e.message, "error"); }
+}
+
+document.addEventListener("iits:shell-ready", () => {
+  loadCerts();
+  document.querySelectorAll("#status-tabs .tab").forEach(t => t.addEventListener("click", () => {
+    document.querySelectorAll("#status-tabs .tab").forEach(x => x.classList.toggle("active", x === t));
+    currentStatus = t.dataset.status;
+    loadCerts();
+  }));
+});
+</script>
+</body>
+</html>

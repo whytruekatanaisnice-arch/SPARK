@@ -171,8 +171,9 @@ async function saveAttendance() {
   const btn = document.getElementById("save-attendance-btn");
   btn.disabled = true; btn.textContent = "Saving…";
   try {
-    await IITS.api(`/api/coach/attendance/sessions/${currentSessionId}/records`, { method: "POST", body: { records } });
-    IITS.toast(`Saved attendance for ${records.length} student(s)`, "success");
+    const res = await IITS.api(`/api/coach/attendance/sessions/${currentSessionId}/records`, { method: "POST", body: { records } });
+    const notices = res && res.absence_notices_sent ? ` · ${res.absence_notices_sent} absence notice(s) emailed to students & parents` : "";
+    IITS.toast(`Saved attendance for ${records.length} student(s)${notices}`, "success");
   } catch (e) { IITS.toast(e.message, "error"); }
   btn.disabled = false; btn.textContent = "Save attendance";
 }

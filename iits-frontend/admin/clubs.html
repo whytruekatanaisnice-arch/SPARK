@@ -61,6 +61,12 @@
 <script src="/shared/js/shell.js"></script>
 <script>
 let coaches = [], venues = [], clubsCache = [];
+let modalAuto = null, modalDraft = null, didAuto = false;
+function stopModalHelpers() {
+  if (modalAuto) { modalAuto.stop(); modalAuto = null; }
+  if (modalDraft) { modalDraft.stop(); modalDraft = null; }
+  const reload = didAuto; didAuto = false; return reload;
+}
 
 function scheduleRowHtml() {
   return `<div class="form-row schedule-row" style="align-items:flex-end;">
@@ -119,10 +125,20 @@ function editClub(id) {
   document.getElementById("schedule-section").style.display = "none";
   document.getElementById("edit-schedule-hint").style.display = "block";
   openModal();
+  modalAuto = IITS.autosave({
+    fields: ["#name", "#category", "#coach_id", "#venue_id", "#description", "#is_active"], anchor: "#description",
+    save: async (p) => {
+      if ("coach_id" in p) p.coach_id = p.coach_id || null;
+      if ("venue_id" in p) p.venue_id = p.venue_id || null;
+      if ("description" in p) p.description = p.description || null;
+      await IITS.api(`/api/admin/clubs/${c.id}`, { method: "PATCH", body: p }); didAuto = true;
+    },
+  });
 }
 
 function openModal() { document.getElementById("club-modal").classList.add("open"); }
 function closeModal() {
+  const reload = stopModalHelpers();
   document.getElementById("club-modal").classList.remove("open");
   document.getElementById("club-form").reset();
   document.getElementById("club-id").value = "";
@@ -132,6 +148,7 @@ function closeModal() {
   document.getElementById("active-field").style.display = "none";
   document.getElementById("schedule-section").style.display = "block";
   document.getElementById("edit-schedule-hint").style.display = "none";
+  if (reload) loadClubs();
 }
 
 document.addEventListener("iits:shell-ready", async () => {
@@ -139,7 +156,7 @@ document.addEventListener("iits:shell-ready", async () => {
   await loadLookups();
   await loadClubs();
 
-  document.getElementById("new-club-btn").addEventListener("click", () => { closeModal(); openModal(); });
+  document.getElementById("new-club-btn").addEventListener("click", () => { closeModal(); openModal(); modalDraft = IITS.draft.start("#club-form", "club-new"); });
   document.getElementById("modal-close").addEventListener("click", closeModal);
   document.getElementById("cancel-btn").addEventListener("click", closeModal);
   document.getElementById("add-schedule-row").addEventListener("click", () => {
@@ -181,6 +198,7 @@ document.addEventListener("iits:shell-ready", async () => {
         };
         await IITS.api("/api/admin/clubs", { method: "POST", body: payload });
         IITS.toast("Club created", "success");
+        if (modalDraft) { modalDraft.clear(); modalDraft = null; }
       }
       closeModal();
       loadClubs();

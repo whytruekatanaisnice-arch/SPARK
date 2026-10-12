@@ -291,3 +291,19 @@ tbody tr:hover { background: #FAFBFF; }
 .auth-error.show { display: block; }
 .status-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; text-align: center; padding: 20px; }
 .status-page .code { font-family: 'Fraunces', serif; font-size: 4.5rem; color: var(--primary); font-weight: 600; line-height: 1; }
+
+/* ---------- Autosave status line ---------- */
+.autosave-status { font-size: 0.76rem; color: var(--muted-2); margin: -6px 0 12px; min-height: 1.1em; }
+.autosave-status[data-state="saving"] { color: var(--primary); }
+.autosave-status[data-state="saved"] { color: var(--success); }
+.autosave-status[data-state="dirty"] { color: var(--warning); }
+.autosave-status[data-state="warn"] { color: var(--warning); }
+.autosave-status[data-state="error"] { color: var(--danger); }
+
+/* ---------- Nav count badge ---------- */
+.nav-badge {
+  margin-left: auto; background: var(--accent); color: var(--accent-ink);
+  font-size: 0.68rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; min-width: 20px; text-align: center;
+}
+.bottom-nav .nav-item { position: relative; }
+.bottom-nav .nav-badge { position: absolute; top: 2px; right: 14%; margin: 0; padding: 0 5px; font-size: 0.6rem; }

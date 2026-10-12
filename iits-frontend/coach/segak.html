@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>SEGAK · IITS Coach</title>
+  <link rel="stylesheet" href="/shared/css/styles.css">
+  <style>
+    .segak-table-wrap { overflow-x: auto; }
+    .segak-table { width: 100%; min-width: 1250px; border-collapse: collapse; }
+    .segak-table th, .segak-table td { padding: 9px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
+    .segak-table th { font-size: 0.77rem; white-space: nowrap; }
+    .segak-table td input, .segak-table td select { min-width: 88px; width: 100%; }
+    .segak-student { min-width: 175px; font-weight: 600; }
+    .segak-student small { display: block; color: var(--muted); font-weight: 400; }
+    .segak-bmi { font-weight: 700; white-space: nowrap; }
+    .segak-clear { white-space: nowrap; }
+  </style>
+</head>
+<body data-role="coach" data-active="segak" data-title="SEGAK">
+<div id="page-root">
+  <div class="page-head">
+    <div><h1>SEGAK bulk assessment</h1><p>Enter each student’s measurements and test results, then save the selected students together.</p></div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px;">
+    <div class="form-row" style="margin:0;align-items:flex-end;">
+      <div class="field" style="margin:0;flex:1;"><label for="club-select">Assigned club roster</label><select id="club-select"></select></div>
+      <div class="field" style="margin:0;max-width:190px;"><label for="assessment-date">Assessment date</label><input id="assessment-date" type="date"></div>
+      <button class="btn btn-secondary" id="load-roster" type="button">Load student list</button>
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:16px;">
+    <strong>Test recording guide</strong>
+    <p class="muted" style="margin-top:6px;">Step test: record recovery pulse in beats/minute after the 3-minute test (96 BPM cadence). Push-ups and curl-ups: record completed repetitions in 1 minute. Select the push-up method used. Sit-and-reach is recorded in centimetres.</p>
+    <p class="muted" style="margin-top:6px;">BMI is calculated as weight (kg) ÷ height (m)². This page reports the numeric BMI only; interpretation for students should use the school’s age- and sex-specific guidance.</p>
+  </div>
+
+  <p id="segak-status" class="muted" aria-live="polite"></p>
+  <div class="card" style="padding:0;">
+    <div class="segak-table-wrap">
+      <table class="segak-table">
+        <thead><tr>
+          <th>Student</th>
+          <th>Weight (kg)</th>
+          <th>Height (cm)</th>
+          <th>BMI</th>
+          <th>Step test recovery pulse (beats/min)</th>
+          <th>Push-up method</th>
+          <th>Push-ups (reps/1 min)</th>
+          <th>Curl-ups (reps/1 min)</th>
+          <th>Sit-and-reach (cm)</th>
+          <th>Clear</th>
+        </tr></thead>
+        <tbody id="segak-roster">
+          <tr><td colspan="10" class="muted" style="padding:18px;">Select an assigned club and assessment date to load its student roster.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <button class="btn btn-primary" id="save-segak" type="button" style="width:100%;margin-top:14px;">Save all entered SEGAK results</button>
+</div>
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/shell.js"></script>
+<script>
+let roster = [];
+let clearRows = new Set();
+
+function escapeHtml(value) {
+  return String(value == null ? "" : value).replace(/[&<>"']/g, char => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  })[char]);
+}
+
+function localDateValue() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+function updateBmi(row) {
+  const weight = Number(row.querySelector('[data-field="weight_kg"]').value);
+  const height = Number(row.querySelector('[data-field="height_cm"]').value);
+  row.querySelector("[data-bmi]").textContent = weight > 0 && height > 0
+    ? (weight / ((height / 100) ** 2)).toFixed(2)
+    : "—";
+}
+
+function renderRoster() {
+  const target = document.getElementById("segak-roster");
+  if (!roster.length) {
+    target.innerHTML = `<tr><td colspan="10" class="muted" style="padding:18px;">No active students are on this club roster.</td></tr>`;
+    return;
+  }
+  target.innerHTML = roster.map(student => `
+    <tr data-student-id="${escapeHtml(student.student_id)}">
+      <td class="segak-student">${escapeHtml(student.full_name)}<small>${escapeHtml(student.student_number)}${student.class_name ? ` · ${escapeHtml(student.class_name)}` : ""}</small></td>
+      <td><input type="number" min="1" max="300" step="0.01" data-field="weight_kg" aria-label="Weight in kilograms for ${escapeHtml(student.full_name)}" value="${escapeHtml(student.weight_kg ?? "")}"></td>
+      <td><input type="number" min="1" max="250" step="0.01" data-field="height_cm" aria-label="Height in centimetres for ${escapeHtml(student.full_name)}" value="${escapeHtml(student.height_cm ?? "")}"></td>
+      <td class="segak-bmi" data-bmi>${student.bmi == null ? "—" : escapeHtml(Number(student.bmi).toFixed(2))}</td>
+      <td><input type="number" min="20" max="250" step="1" data-field="step_test_recovery_bpm" aria-label="Step test recovery pulse for ${escapeHtml(student.full_name)}" value="${escapeHtml(student.step_test_recovery_bpm ?? "")}"></td>
+      <td><select data-field="push_up_type" aria-label="Push-up method for ${escapeHtml(student.full_name)}">
+        <option value="">Select</option>
+        <option value="standard" ${student.push_up_type === "standard" ? "selected" : ""}>Standard</option>
+        <option value="modified" ${student.push_up_type === "modified" ? "selected" : ""}>Modified</option>
+      </select></td>
+      <td><input type="number" min="0" max="300" step="1" data-field="push_up_reps" aria-label="Push-up repetitions for ${escapeHtml(student.full_name)}" value="${escapeHtml(student.push_up_reps ?? "")}"></td>
+      <td><input type="number" min="0" max="300" step="1" data-field="curl_up_reps" aria-label="Curl-up repetitions for ${escapeHtml(student.full_name)}" value="${escapeHtml(student.curl_up_reps ?? "")}"></td>
+      <td><input type="number" min="-50" max="100" step="0.01" data-field="sit_and_reach_cm" aria-label="Sit-and-reach centimetres for ${escapeHtml(student.full_name)}" value="${escapeHtml(student.sit_and_reach_cm ?? "")}"></td>
+      <td><button class="btn btn-secondary btn-sm segak-clear" type="button" data-clear-student="${escapeHtml(student.student_id)}">Clear row</button></td>
+    </tr>`).join("");
+
+  target.querySelectorAll('[data-field="weight_kg"], [data-field="height_cm"]').forEach(input => {
+    input.addEventListener("input", () => updateBmi(input.closest("tr")));
+  });
+  target.querySelectorAll("[data-clear-student]").forEach(button => {
+    button.addEventListener("click", () => {
+      const row = button.closest("tr");
+      row.querySelectorAll("[data-field]").forEach(field => { field.value = ""; });
+      updateBmi(row);
+      clearRows.add(button.dataset.clearStudent);
+      row.style.opacity = "0.55";
+    });
+  });
+  target.querySelectorAll("[data-field]").forEach(field => {
+    field.addEventListener("input", () => {
+      clearRows.delete(field.closest("tr").dataset.studentId);
+      field.closest("tr").style.opacity = "";
+    });
+    field.addEventListener("change", () => {
+      clearRows.delete(field.closest("tr").dataset.studentId);
+      field.closest("tr").style.opacity = "";
+    });
+  });
+}
+
+async function loadRoster() {
+  const clubId = document.getElementById("club-select").value;
+  const assessmentDate = document.getElementById("assessment-date").value;
+  if (!clubId || !assessmentDate) {
+    IITS.toast("Choose an assigned club and assessment date.", "error");
+    return;
+  }
+  const target = document.getElementById("segak-roster");
+  const status = document.getElementById("segak-status");
+  target.innerHTML = `<tr><td colspan="10" class="muted" style="padding:18px;">Loading student list…</td></tr>`;
+  try {
+    const query = new URLSearchParams({ club_id: clubId, assessment_date: assessmentDate });
+    roster = await IITS.api(`/api/coach/segak?${query}`);
+    clearRows = new Set();
+    renderRoster();
+    status.textContent = `${roster.length} student${roster.length === 1 ? "" : "s"} loaded. Existing results for this date are shown.`;
+  } catch (error) {
+    roster = [];
+    renderRoster();
+    status.textContent = "";
+    IITS.toast(`Could not load the SEGAK roster: ${error.message}`, "error");
+  }
+}
+
+async function loadClubs() {
+  const [user, clubs] = await Promise.all([
+    IITS.api("/api/auth/me"),
+    IITS.api("/api/clubs"),
+  ]);
+  IITS.setUser(user);
+  const assigned = user.role === "admin" ? clubs : clubs.filter(club => club.coach_id === user.id);
+  const select = document.getElementById("club-select");
+  select.innerHTML = assigned.map(club =>
+    `<option value="${escapeHtml(club.id)}">${escapeHtml(club.name)}</option>`
+  ).join("") || `<option value="">No assigned club rosters</option>`;
+  if (!assigned.length) {
+    document.getElementById("segak-status").textContent = "No clubs are assigned to this coach. Ask an administrator to assign a club before entering SEGAK results.";
+  }
+}
+
+async function saveBulkResults() {
+  const clubId = document.getElementById("club-select").value;
+  const assessmentDate = document.getElementById("assessment-date").value;
+  if (!clubId || !assessmentDate) {
+    IITS.toast("Choose an assigned club and assessment date first.", "error");
+    return;
+  }
+  const records = [];
+  for (const row of document.querySelectorAll("#segak-roster tr[data-student-id]")) {
+    const values = Object.fromEntries([...row.querySelectorAll("[data-field]")].map(input => [input.dataset.field, input.value.trim()]));
+    if (clearRows.has(row.dataset.studentId)) {
+      records.push({ student_id: row.dataset.studentId, clear_record: true });
+      continue;
+    }
+    const anyValue = Object.values(values).some(value => value !== "");
+    if (!anyValue) continue;
+    if ((values.push_up_type === "") !== (values.push_up_reps === "")) {
+      IITS.toast(`Select a push-up method and enter the repetition count together for ${row.querySelector(".segak-student").childNodes[0].textContent.trim()}.`, "error");
+      return;
+    }
+    const numericFields = ["weight_kg", "height_cm", "step_test_recovery_bpm", "push_up_reps", "curl_up_reps", "sit_and_reach_cm"];
+    const parsed = Object.fromEntries(numericFields.map(field => [field, values[field] === "" ? null : Number(values[field])]));
+    records.push({
+      student_id: row.dataset.studentId,
+      ...parsed,
+      push_up_type: values.push_up_type || null,
+    });
+  }
+  if (!records.length) {
+    IITS.toast("Enter at least one student's results or use Clear row to remove a saved result.", "error");
+    return;
+  }
+  const button = document.getElementById("save-segak");
+  button.disabled = true;
+  try {
+    const result = await IITS.api("/api/coach/segak/bulk", {
+      method: "PUT",
+      body: { club_id: clubId, assessment_date: assessmentDate, records },
+    });
+    IITS.toast(`${result.saved_count} SEGAK record${result.saved_count === 1 ? "" : "s"} saved.`, "success");
+    await loadRoster();
+  } catch (error) {
+    IITS.toast(`Could not save SEGAK results: ${error.message}`, "error");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+document.addEventListener("iits:shell-ready", async () => {
+  document.getElementById("assessment-date").value = localDateValue();
+  document.getElementById("load-roster").addEventListener("click", loadRoster);
+  document.getElementById("club-select").addEventListener("change", loadRoster);
+  document.getElementById("assessment-date").addEventListener("change", loadRoster);
+  document.getElementById("save-segak").addEventListener("click", saveBulkResults);
+  try {
+    await loadClubs();
+    if (document.getElementById("club-select").value) await loadRoster();
+  } catch (error) {
+    IITS.toast(`Could not load assigned clubs: ${error.message}`, "error");
+  }
+});
+</script>
+</body>
+</html>

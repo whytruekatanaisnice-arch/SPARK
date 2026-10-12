@@ -11,7 +11,10 @@ from app.models.attendance import AttendanceRecord, AttendanceSession, Attendanc
 from app.schemas.attendance import (
     AttendanceSessionOut, BulkMarkRequest, CreateSessionRequest,
 )
+from app.models.club import Club
+from app.models.user import User
 from app.security import CurrentUser, require_coach
+from app.utils.notifier import notify_absence
 from app.utils.pa_jsK import recalculate_and_store
 
 router = APIRouter(prefix="/api/coach/attendance", tags=["coach:attendance"], dependencies=[Depends(require_coach)])
@@ -27,13 +30,15 @@ async def create_session(payload: CreateSessionRequest, current_user: CurrentUse
 
 
 @router.post("/sessions/{session_id}/records", status_code=status.HTTP_200_OK)
-async def bulk_mark(session_id: UUID, payload: BulkMarkRequest, db: AsyncSession = Depends(get_db)):
+async def bulk_mark(session_id: UUID, payload: BulkMarkRequest, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
     """Mark (or update) attendance for many students at once, then recalculate PAJSK for each."""
     session = await db.get(AttendanceSession, session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
     year = session.session_date.year
+
+    newly_absent: list = []  # students who just became ABSENT (not re-saves of an existing absence)
 
     for mark in payload.records:
         existing = await db.execute(
@@ -43,6 +48,9 @@ async def bulk_mark(session_id: UUID, payload: BulkMarkRequest, db: AsyncSession
             )
         )
         record = existing.scalar_one_or_none()
+        new_status = AttendanceStatus(mark.status)
+        if new_status == AttendanceStatus.ABSENT and (record is None or record.status != AttendanceStatus.ABSENT):
+            newly_absent.append(mark.student_id)
         if record:
             record.status = AttendanceStatus(mark.status)
             record.note = mark.note
@@ -59,7 +67,19 @@ async def bulk_mark(session_id: UUID, payload: BulkMarkRequest, db: AsyncSession
     for mark in payload.records:
         await recalculate_and_store(mark.student_id, year, db)
 
-    return {"detail": f"{len(payload.records)} attendance records saved"}
+    # Notify student + parents (in-app + email) for anyone newly marked absent.
+    if newly_absent:
+        club = await db.get(Club, session.club_id)
+        club_name = club.name if club else "your club"
+        for student_id in newly_absent:
+            student = await db.get(User, student_id)
+            if student:
+                await notify_absence(db, student, club_name, session.session_date.isoformat(), created_by=current_user.id)
+
+    return {
+        "detail": f"{len(payload.records)} attendance records saved",
+        "absence_notices_sent": len(newly_absent),
+    }
 
 
 @router.get("/sessions", response_model=list[AttendanceSessionOut])

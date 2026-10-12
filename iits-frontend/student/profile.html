@@ -9,17 +9,16 @@
 <body data-role="student" data-active="profile" data-title="Profile">
 <div id="page-root">
 
-  <div class="page-head"><div><h1>My profile</h1><p>Keep your details up to date.</p></div></div>
+  <div class="page-head"><div><h1>My profile</h1><p>Edits save automatically every 10 seconds.</p></div></div>
 
   <div class="grid grid-2" style="align-items:start;">
     <div class="card">
       <h3>Personal details</h3>
-      <form id="profile-form">
-        <div class="field"><label for="full_name">Full name</label><input type="text" id="full_name" required></div>
-        <div class="field"><label for="phone">Phone</label><input type="text" id="phone"></div>
-        <div class="field"><label for="class_name">Class</label><input type="text" id="class_name"></div>
-        <button type="submit" class="btn btn-primary">Save changes</button>
-      </form>
+      <div class="field"><label>Email</label><input type="text" id="email" disabled></div>
+      <div class="field"><label>Student number</label><input type="text" id="student_number" disabled></div>
+      <div class="field"><label for="full_name">Full name</label><input type="text" id="full_name" required></div>
+      <div class="field"><label for="phone">Phone</label><input type="text" id="phone"></div>
+      <div class="field"><label for="class_name">Class</label><input type="text" id="class_name" placeholder="e.g. 3 Bestari"></div>
     </div>
     <div class="card">
       <h3>Change password</h3>
@@ -39,30 +38,27 @@
 <script>
 document.addEventListener("iits:shell-ready", async () => {
   try {
-    const me = await IITS.api("/api/auth/me");
+    const me = await IITS.api("/api/student/profile");
+    document.getElementById("email").value = me.email || "";
+    document.getElementById("student_number").value = me.student_number || "";
     document.getElementById("full_name").value = me.full_name || "";
     document.getElementById("phone").value = me.phone || "";
+    document.getElementById("class_name").value = me.class_name || "";
   } catch (e) { IITS.toast(e.message, "error"); }
 
-  document.getElementById("profile-form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const payload = {
-      full_name: document.getElementById("full_name").value.trim(),
-      phone: document.getElementById("phone").value.trim() || null,
-      class_name: document.getElementById("class_name").value.trim() || null,
-    };
-    try {
-      const updated = await IITS.api("/api/student/profile", { method: "PATCH", body: payload });
+  IITS.autosave({
+    fields: ["#full_name", "#phone", "#class_name"],
+    anchor: "#class_name",
+    save: async (changes) => {
+      const updated = await IITS.api("/api/student/profile", { method: "PATCH", body: changes });
       IITS.setUser(updated);
-      IITS.toast("Profile updated", "success");
-    } catch (err) { IITS.toast(err.message, "error"); }
+    },
   });
 
   document.getElementById("password-form").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const payload = { old_password: document.getElementById("old_password").value, new_password: document.getElementById("new_password").value };
     try {
-      await IITS.api("/api/auth/change-password", { method: "POST", body: payload });
+      await IITS.api("/api/auth/change-password", { method: "POST", body: { old_password: document.getElementById("old_password").value, new_password: document.getElementById("new_password").value } });
       IITS.toast("Password updated", "success");
       document.getElementById("password-form").reset();
     } catch (err) { IITS.toast(err.message, "error"); }

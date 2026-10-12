@@ -68,3 +68,44 @@ async def send_password_reset_email(to_email: str, full_name: str, temp_password
         f"— IITS"
     )
     return await asyncio.to_thread(_send_sync, to_email, subject, body)
+
+
+async def send_email(to_email: str, subject: str, body: str) -> bool:
+    """Generic send, for callers (e.g. notification helpers) that build their own body."""
+    return await asyncio.to_thread(_send_sync, to_email, subject, body)
+
+
+def absence_email_body(recipient_name: str, student_name: str, club_name: str, session_date: str, is_student: bool) -> str:
+    who = "You were" if is_student else f"{student_name} was"
+    return (
+        f"Hi {recipient_name},\n\n"
+        f"{who} marked ABSENT from {club_name} on {session_date}.\n\n"
+        f"If this absence was for a valid reason (illness, family emergency, etc.), "
+        f"a supporting certificate or document can be uploaded for the school's review "
+        f"from the Certificates section of the IITS portal: {settings.APP_LOGIN_URL}\n\n"
+        f"— IITS"
+    )
+
+
+def certificate_submitted_email_body(admin_name: str, student_name: str, club_name: str, reason: str) -> str:
+    return (
+        f"Hi {admin_name},\n\n"
+        f"{student_name} has a certificate awaiting your review (absence from {club_name}).\n\n"
+        f"Reason given: {reason}\n\n"
+        f"Approve or reject it from the Certificates section: {settings.APP_LOGIN_URL}\n\n"
+        f"— IITS"
+    )
+
+
+def certificate_decision_email_body(recipient_name: str, student_name: str, approved: bool, review_note: str | None, is_student: bool) -> str:
+    whose = "Your" if is_student else f"{student_name}'s"
+    decision = "APPROVED" if approved else "REJECTED"
+    note_line = f"Admin note: {review_note}\n\n" if review_note else ""
+    outcome = "The related attendance record has been updated to Excused." if approved else "The absence record remains unchanged."
+    return (
+        f"Hi {recipient_name},\n\n"
+        f"{whose} certificate submission has been {decision}.\n\n"
+        f"{note_line}{outcome}\n\n"
+        f"View details at: {settings.APP_LOGIN_URL}\n\n"
+        f"— IITS"
+    )

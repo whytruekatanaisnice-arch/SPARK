@@ -44,6 +44,12 @@
 <script src="/shared/js/shell.js"></script>
 <script>
 let venuesCache = [];
+let modalAuto = null, modalDraft = null, didAuto = false;
+function stopModalHelpers() {
+  if (modalAuto) { modalAuto.stop(); modalAuto = null; }
+  if (modalDraft) { modalDraft.stop(); modalDraft = null; }
+  const reload = didAuto; didAuto = false; return reload;
+}
 
 async function loadVenues() {
   const tbody = document.getElementById("venues-tbody");
@@ -79,20 +85,26 @@ function editVenue(id) {
   document.getElementById("capacity").value = v.capacity ?? "";
   document.getElementById("notes").value = v.notes || "";
   openModal();
+  modalAuto = IITS.autosave({
+    fields: ["#name", "#capacity", "#notes"], anchor: "#notes", sendAll: true,
+    save: async (p) => { await IITS.api(`/api/admin/venues/${v.id}`, { method: "PATCH", body: p }); didAuto = true; },
+  });
 }
 
 function openModal() { document.getElementById("venue-modal").classList.add("open"); }
 function closeModal() {
+  const reload = stopModalHelpers();
   document.getElementById("venue-modal").classList.remove("open");
   document.getElementById("venue-form").reset();
   document.getElementById("venue-id").value = "";
   document.getElementById("modal-title").textContent = "New venue";
   document.getElementById("save-btn").textContent = "Save venue";
+  if (reload) loadVenues();
 }
 
 document.addEventListener("iits:shell-ready", () => {
   loadVenues();
-  document.getElementById("new-venue-btn").addEventListener("click", () => { closeModal(); openModal(); });
+  document.getElementById("new-venue-btn").addEventListener("click", () => { closeModal(); openModal(); modalDraft = IITS.draft.start("#venue-form", "venue-new"); });
   document.getElementById("modal-close").addEventListener("click", closeModal);
   document.getElementById("cancel-btn").addEventListener("click", closeModal);
   document.getElementById("venue-form").addEventListener("submit", async (e) => {
@@ -110,6 +122,7 @@ document.addEventListener("iits:shell-ready", () => {
       } else {
         await IITS.api("/api/admin/venues", { method: "POST", body: payload });
         IITS.toast("Venue created", "success");
+        if (modalDraft) { modalDraft.clear(); modalDraft = null; }
       }
       closeModal();
       loadVenues();

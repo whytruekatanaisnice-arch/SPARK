@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Certificates · IITS Parent</title>
+<link rel="stylesheet" href="/shared/css/styles.css">
+</head>
+<body data-role="parent" data-active="certificates" data-title="Certificates">
+<div id="page-root">
+
+  <div class="page-head"><div><h1>Absence certificates</h1><p>Upload a medical or supporting certificate for your child's absence. The school admin will review it.</p></div></div>
+
+  <div class="field" style="max-width:280px;"><label for="child-select">Child</label><select id="child-select"></select></div>
+
+  <div class="grid grid-2" style="align-items:start;margin-top:8px;">
+    <div class="card">
+      <h3>Submit a certificate</h3>
+      <form id="cert-form">
+        <div class="field"><label for="attendance_record_id">Which absence is this for?</label>
+          <select id="attendance_record_id"><option value="">Not linked to a specific session</option></select>
+        </div>
+        <div class="field"><label for="reason">Reason</label><textarea id="reason" rows="3" required placeholder="e.g. Fever — medical certificate attached"></textarea></div>
+        <div class="field"><label for="file">Certificate (photo or PDF)</label><input type="file" id="file" accept="image/*,application/pdf" required>
+          <div class="hint">Draft text is kept for you if you close this page by accident.</div></div>
+        <button type="submit" class="btn btn-primary" id="submit-btn" style="width:100%;">Submit for review</button>
+      </form>
+    </div>
+    <div>
+      <h3 style="margin-bottom:10px;">Submissions</h3>
+      <div id="cert-list"><div class="loading-row"><span class="spinner"></span> Loading…</div></div>
+    </div>
+  </div>
+
+</div>
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/shell.js"></script>
+<script>
+const STATUS_BADGE = { pending: "badge-yellow", approved: "badge-green", rejected: "badge-red" };
+let absences = [];
+const childId = () => document.getElementById("child-select").value;
+
+function describeAbsence(id) {
+  const a = absences.find(x => x.record_id === id);
+  return a ? `${a.club_name} · ${a.session_date}` : "General";
+}
+
+async function loadChildData() {
+  if (!childId()) return;
+  try {
+    absences = await IITS.api(`/api/parent/children/${childId()}/absences`);
+    document.getElementById("attendance_record_id").innerHTML =
+      `<option value="">Not linked to a specific session</option>` +
+      absences.map(a => `<option value="${a.record_id}">${a.club_name} — ${a.session_date}</option>`).join("");
+    const items = await IITS.api(`/api/parent/children/${childId()}/certificates`);
+    document.getElementById("cert-list").innerHTML = items.length ? items.map(c => `
+      <div class="card">
+        <div class="flex between"><strong style="font-size:0.9rem;">${c.attendance_record_id ? describeAbsence(c.attendance_record_id) : "General"}</strong>
+          <span class="badge ${STATUS_BADGE[c.status] || "badge-grey"}">${c.status}</span></div>
+        <p style="margin:6px 0;font-size:0.86rem;">${c.reason}</p>
+        ${c.file_url ? `<a href="${c.file_url}" target="_blank" rel="noopener" style="font-size:0.82rem;">View uploaded file</a>` : ""}
+        ${c.review_note ? `<div class="muted" style="font-size:0.8rem;margin-top:6px;"><strong>Admin note:</strong> ${c.review_note}</div>` : ""}
+        <div class="muted" style="font-size:0.74rem;margin-top:6px;">Submitted ${new Date(c.created_at).toLocaleString()}</div>
+      </div>`).join("") : `<div class="card empty-state"><div class="title">No certificates yet</div>Submissions for this child will appear here.</div>`;
+  } catch (e) { IITS.toast(e.message, "error"); }
+}
+
+document.addEventListener("iits:shell-ready", async () => {
+  try {
+    const children = await IITS.api("/api/parent/children");
+    document.getElementById("child-select").innerHTML = children.map(c => `<option value="${c.student_id}">${c.full_name}</option>`).join("") || `<option value="">No linked children</option>`;
+  } catch (e) { IITS.toast(e.message, "error"); }
+  loadChildData();
+  document.getElementById("child-select").addEventListener("change", loadChildData);
+
+  const form = document.getElementById("cert-form");
+  const draft = IITS.draft.start(form, "parent-certificate");
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!childId()) { IITS.toast("No child selected", "error"); return; }
+    const btn = document.getElementById("submit-btn");
+    btn.disabled = true; btn.textContent = "Uploading…";
+    try {
+      const fd = new FormData();
+      fd.append("file", document.getElementById("file").files[0]);
+      const up = await IITS.api("/api/uploads", { method: "POST", body: fd, isForm: true });
+      await IITS.api(`/api/parent/children/${childId()}/certificates`, { method: "POST", body: {
+        reason: document.getElementById("reason").value.trim(),
+        file_url: up.file_url,
+        attendance_record_id: document.getElementById("attendance_record_id").value || null,
+      }});
+      IITS.toast("Submitted — the admin has been notified", "success");
+      draft.clear();
+      form.reset();
+      loadChildData();
+    } catch (err) { IITS.toast(err.message, "error"); }
+    btn.disabled = false; btn.textContent = "Submit for review";
+  });
+});
+</script>
+</body>
+</html>

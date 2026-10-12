@@ -16,7 +16,7 @@ from app.models.user import ParentStudentLink
 from app.schemas.achievement import AchievementCreate, AchievementOut, AchievementRankOut
 from app.schemas.common import Message
 from app.schemas.notification import NotificationBroadcast
-from app.schemas.progress import ProgressCreate, ProgressOut
+from app.schemas.progress import ProgressCreate, ProgressOut, ProgressUpdate
 from app.schemas.role import AssignRoleRequest, RoleTypeOut, StudentRoleOut
 from app.security import CurrentUser, require_coach
 from app.utils.pa_jsK import recalculate_and_store
@@ -99,6 +99,21 @@ async def remove_role(role_id: UUID, db: AsyncSession = Depends(get_db)):
 async def log_progress(payload: ProgressCreate, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
     note = ProgressNote(**payload.model_dump(), coach_id=current_user.id)
     db.add(note)
+    await db.commit()
+    await db.refresh(note)
+    return note
+
+
+@router.patch("/progress/{note_id}", response_model=ProgressOut)
+async def update_progress(note_id: UUID, payload: ProgressUpdate, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    """Edit a note in place — used by autosave so typing doesn't create a new note every cycle."""
+    note = await db.get(ProgressNote, note_id)
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+    if note.coach_id != current_user.id and current_user.role.value != "admin":
+        raise HTTPException(status_code=403, detail="You can only edit your own notes")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(note, field, value)
     await db.commit()
     await db.refresh(note)
     return note

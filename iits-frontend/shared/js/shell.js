@@ -38,27 +38,34 @@
       { label: "Dashboard", href: "/admin/dashboard.html", key: "dashboard", icon: "home" },
       { label: "Users", href: "/admin/users.html", key: "users", icon: "users" },
       { label: "Clubs", href: "/admin/clubs.html", key: "clubs", icon: "flag" },
+      { label: "Certificates", href: "/admin/certificates.html", key: "certificates", icon: "clipboard" },
+      { label: "Notifications", href: "/admin/notifications.html", key: "notifications", icon: "bell" },
       { label: "Venues", href: "/admin/venues.html", key: "venues", icon: "pin" },
       { label: "Announcements", href: "/admin/announcements.html", key: "announcements", icon: "megaphone" },
       { label: "Reports", href: "/admin/reports.html", key: "reports", icon: "chart" },
       { label: "Gamification", href: "/admin/gamification.html", key: "gamification", icon: "trophy" },
       { label: "Messages", href: "/admin/conversation.html", key: "conversation", icon: "chat" },
+      { label: "Profile", href: "/admin/profile.html", key: "profile", icon: "user" },
     ],
     coach: [
       { label: "Dashboard", href: "/coach/dashboard.html", key: "dashboard", icon: "home" },
       { label: "Attendance", href: "/coach/attendance.html", key: "attendance", icon: "qr" },
-      { label: "AJK Roles", href: "/coach/roles.html", key: "roles", icon: "users" },
-      { label: "Achievements", href: "/coach/achievements.html", key: "achievements", icon: "star" },
+      { label: "Students", href: "/coach/students.html", key: "students", icon: "users" },
       { label: "Tasks", href: "/coach/tasks.html", key: "tasks", icon: "clipboard" },
+      { label: "Notifications", href: "/coach/notifications.html", key: "notifications", icon: "bell" },
+      { label: "AJK Roles", href: "/coach/roles.html", key: "roles", icon: "star" },
+      { label: "Achievements", href: "/coach/achievements.html", key: "achievements", icon: "trophy" },
       { label: "Feedback", href: "/coach/feedback.html", key: "feedback", icon: "chat" },
       { label: "Announcements", href: "/coach/announcements.html", key: "announcements", icon: "megaphone" },
-      { label: "Notifications", href: "/coach/notifications.html", key: "notifications", icon: "bell" },
+      { label: "Profile", href: "/coach/profile.html", key: "profile", icon: "user" },
     ],
     student: [
       { label: "Dashboard", href: "/student/dashboard.html", key: "dashboard", icon: "home" },
       { label: "My Clubs", href: "/student/clubs.html", key: "clubs", icon: "flag" },
       { label: "Tasks", href: "/student/tasks.html", key: "tasks", icon: "clipboard" },
       { label: "PAJSK", href: "/student/pajsk.html", key: "pajsk", icon: "chart" },
+      { label: "Notifications", href: "/student/notifications.html", key: "notifications", icon: "bell" },
+      { label: "Certificates", href: "/student/certificates.html", key: "certificates", icon: "calendar" },
       { label: "NILAM", href: "/student/nilam.html", key: "nilam", icon: "book" },
       { label: "Announcements", href: "/student/announcements.html", key: "announcements", icon: "megaphone" },
       { label: "Profile", href: "/student/profile.html", key: "profile", icon: "user" },
@@ -66,9 +73,11 @@
     parent: [
       { label: "Dashboard", href: "/parent/dashboard.html", key: "dashboard", icon: "home" },
       { label: "Attendance", href: "/parent/attendance.html", key: "attendance", icon: "calendar" },
+      { label: "Certificates", href: "/parent/certificates.html", key: "certificates", icon: "clipboard" },
       { label: "PAJSK Report", href: "/parent/reports.html", key: "reports", icon: "chart" },
-      { label: "Announcements", href: "/parent/announcements.html", key: "announcements", icon: "megaphone" },
       { label: "Notifications", href: "/parent/notifications.html", key: "notifications", icon: "bell" },
+      { label: "Announcements", href: "/parent/announcements.html", key: "announcements", icon: "megaphone" },
+      { label: "Profile", href: "/parent/profile.html", key: "profile", icon: "user" },
     ],
   };
 
@@ -85,7 +94,7 @@
   function buildSidebar(role, active, user) {
     const items = NAV[role] || [];
     const navHtml = items.map(i =>
-      `<a class="nav-item ${i.key === active ? "active" : ""}" href="${i.href}">${icon(i.icon)}<span>${i.label}</span></a>`
+      `<a class="nav-item ${i.key === active ? "active" : ""}" href="${i.href}" data-nav-key="${i.key}">${icon(i.icon)}<span>${i.label}</span></a>`
     ).join("");
 
     return `
@@ -111,7 +120,7 @@
   function buildBottomNav(role, active) {
     const items = (NAV[role] || []).slice(0, 5);
     return `<nav class="bottom-nav" id="bottom-nav">${items.map(i =>
-      `<a class="nav-item ${i.key === active ? "active" : ""}" href="${i.href}">${icon(i.icon)}<span>${i.label.split(" ")[0]}</span></a>`
+      `<a class="nav-item ${i.key === active ? "active" : ""}" href="${i.href}" data-nav-key="${i.key}">${icon(i.icon)}<span>${i.label.split(" ")[0]}</span></a>`
     ).join("")}</nav>`;
   }
 
@@ -125,6 +134,37 @@
         <div id="topbar-right"></div>
       </header>`;
   }
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const el = document.createElement("script");
+      el.src = src; el.onload = resolve; el.onerror = reject;
+      document.head.appendChild(el);
+    });
+  }
+
+  function setBadge(navKey, count) {
+    document.querySelectorAll(`[data-nav-key="${navKey}"]`).forEach(a => {
+      let b = a.querySelector(".nav-badge");
+      if (!count) { if (b) b.remove(); return; }
+      if (!b) { b = document.createElement("span"); b.className = "nav-badge"; a.appendChild(b); }
+      b.textContent = count > 99 ? "99+" : count;
+    });
+  }
+
+  async function refreshBadges(role) {
+    try {
+      const notifs = await IITS.api("/api/notifications");
+      setBadge("notifications", notifs.filter(n => !n.is_read).length);
+    } catch (e) { /* badges are best-effort */ }
+    if (role === "admin") {
+      try {
+        const pending = await IITS.api("/api/admin/certificates?status_filter=pending");
+        setBadge("certificates", pending.length);
+      } catch (e) { /* best-effort */ }
+    }
+  }
+  IITS.refreshBadges = () => refreshBadges(document.body.dataset.role);
 
   async function initShell() {
     const body = document.body;
@@ -173,6 +213,8 @@
       toggle.addEventListener("click", () => { newSidebar.classList.toggle("open"); backdrop.classList.toggle("open"); });
     } catch (e) { /* IITS.api already redirects on 401/403 */ }
 
+    if (!IITS.autosave) { try { await loadScript("/shared/js/autosave.js"); } catch (e) { /* autosave optional */ } }
+    refreshBadges(role);
     document.dispatchEvent(new CustomEvent("iits:shell-ready"));
   }
 

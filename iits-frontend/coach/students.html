@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Students · IITS Coach</title>
+<link rel="stylesheet" href="/shared/css/styles.css">
+</head>
+<body data-role="coach" data-active="students" data-title="Students">
+<div id="page-root">
+
+  <div class="page-head"><div><h1>Student progress notes</h1><p>Log progress, behaviour, and skills. Notes autosave every 10 seconds while you type.</p></div></div>
+
+  <div class="field" style="max-width:280px;"><label for="club-select">Club</label><select id="club-select"></select></div>
+
+  <div id="students-list" style="margin-top:8px;"><div class="loading-row"><span class="spinner"></span> Loading…</div></div>
+
+</div>
+<script src="/shared/js/config.js"></script>
+<script src="/shared/js/toast.js"></script>
+<script src="/shared/js/api.js"></script>
+<script src="/shared/js/shell.js"></script>
+<script>
+const activeAutosavers = [];   // stopped whenever the club changes
+
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+async function loadHistory(studentId) {
+  const el = document.getElementById(`history-${studentId}`);
+  try {
+    const notes = await IITS.api(`/api/coach/students/${studentId}/progress`);
+    el.innerHTML = notes.length
+      ? notes.map(n => `<div style="padding:8px 0;border-bottom:1px solid var(--border);">
+          <div class="flex between"><span class="badge badge-blue">${n.category}</span><span class="muted" style="font-size:0.74rem;">${new Date(n.created_at).toLocaleString()}</span></div>
+          <div style="font-size:0.86rem;margin-top:4px;white-space:pre-wrap;">${esc(n.note)}</div></div>`).join("")
+      : `<p class="muted" style="font-size:0.82rem;margin:0;">No notes yet.</p>`;
+  } catch (e) { el.innerHTML = `<p class="muted">Couldn't load notes.</p>`; }
+}
+
+function mountStudent(student) {
+  const sid = student.id;
+  const noteEl = document.getElementById(`note-${sid}`);
+  const catEl = document.getElementById(`cat-${sid}`);
+  let noteId = null;   // becomes set after the first autosave creates the note
+
+  const saver = IITS.autosave({
+    fields: [noteEl, catEl],
+    anchor: noteEl,
+    sendAll: true,
+    save: async (p) => {
+      const body = { category: p[catEl.id], note: p[noteEl.id] };
+      if (!body.note || !body.note.trim()) return;           // nothing worth saving yet
+      if (!noteId) {
+        const created = await IITS.api("/api/coach/progress", { method: "POST", body: { student_id: sid, category: body.category, note: body.note } });
+        noteId = created.id;
+      } else {
+        await IITS.api(`/api/coach/progress/${noteId}`, { method: "PATCH", body });
+      }
+    },
+  });
+  activeAutosavers.push(saver);
+
+  document.getElementById(`finish-${sid}`).addEventListener("click", async () => {
+    await saver.flush();
+    noteEl.value = ""; noteId = null; saver.markClean();
+    loadHistory(sid);
+    IITS.toast("Note saved", "success");
+  });
+  document.getElementById(`toggle-${sid}`).addEventListener("click", (e) => {
+    const h = document.getElementById(`history-${sid}`);
+    const open = h.style.display === "block";
+    h.style.display = open ? "none" : "block";
+    e.target.textContent = open ? "Show past notes" : "Hide past notes";
+    if (!open) loadHistory(sid);
+  });
+}
+
+async function loadStudents() {
+  activeAutosavers.splice(0).forEach(s => s.stop());
+  const clubId = document.getElementById("club-select").value;
+  const list = document.getElementById("students-list");
+  if (!clubId) { list.innerHTML = `<div class="card empty-state"><div class="title">No clubs assigned</div></div>`; return; }
+  try {
+    const roster = await IITS.api(`/api/coach/clubs/${clubId}/roster`);
+    if (!roster.length) { list.innerHTML = `<div class="card empty-state"><div class="title">No members yet</div></div>`; return; }
+    list.innerHTML = roster.map(s => `
+      <div class="card">
+        <div class="flex between"><h3>${esc(s.full_name)} <span class="muted" style="font-size:0.78rem;font-weight:400;">${s.student_number || ""} · ${s.class_name || ""}</span></h3>
+          <button class="btn btn-ghost btn-sm" id="toggle-${s.id}">Show past notes</button></div>
+        <div class="form-row" style="margin-top:8px;">
+          <div class="field" style="max-width:170px;"><label>Category</label>
+            <select id="cat-${s.id}"><option value="progress">Progress</option><option value="behavior">Behaviour</option><option value="skill">Skill</option></select></div>
+        </div>
+        <div class="field"><label>New note</label><textarea id="note-${s.id}" rows="3" placeholder="Start typing — it saves automatically…"></textarea></div>
+        <div class="flex" style="justify-content:flex-end;"><button class="btn btn-secondary btn-sm" id="finish-${s.id}">Finish note</button></div>
+        <div id="history-${s.id}" style="display:none;margin-top:10px;"></div>
+      </div>`).join("");
+    roster.forEach(mountStudent);
+  } catch (e) { IITS.toast(e.message, "error"); }
+}
+
+document.addEventListener("iits:shell-ready", async () => {
+  const user = IITS.getUser();
+  const clubs = (await IITS.api("/api/clubs")).filter(c => c.coach_id === user.id);
+  document.getElementById("club-select").innerHTML = clubs.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
+  document.getElementById("club-select").addEventListener("change", loadStudents);
+  loadStudents();
+});
+</script>
+</body>
+</html>

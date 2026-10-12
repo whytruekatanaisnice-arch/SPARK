@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.routers import (
-    admin, announcements, attendance, auth, clubs, coach, messaging,
+    admin, announcements, attendance, auth, certificates, clubs, coach, messaging,
     nilam, notifications, parent, reports, student, tasks, uploads,
 )
 
@@ -30,6 +30,7 @@ app.include_router(admin.router)
 app.include_router(clubs.admin_router)
 app.include_router(announcements.admin_router)
 app.include_router(reports.router)
+app.include_router(certificates.admin_router)
 
 # --- Coach ---
 app.include_router(coach.router)
@@ -40,9 +41,11 @@ app.include_router(tasks.coach_router)
 app.include_router(student.router)
 app.include_router(tasks.student_router)
 app.include_router(nilam.router)
+app.include_router(certificates.student_router)
 
 # --- Parent ---
 app.include_router(parent.router)
+app.include_router(certificates.parent_router)
 
 # --- Shared ---
 app.include_router(clubs.router)

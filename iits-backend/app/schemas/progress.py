@@ -12,6 +12,11 @@ class ProgressCreate(BaseModel):
     note: str
 
 
+class ProgressUpdate(BaseModel):
+    category: str | None = None
+    note: str | None = None
+
+
 class ProgressOut(ORMBase):
     id: UUID
     student_id: UUID

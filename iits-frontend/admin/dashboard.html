@@ -32,6 +32,7 @@
     <div class="card">
       <div class="section-head"><h2>Quick actions</h2></div>
       <div style="display:flex;flex-direction:column;gap:8px;">
+        <a class="btn btn-accent" href="/admin/certificates.html" id="cert-link">Review certificates</a>
         <a class="btn btn-secondary" href="/admin/users.html">Add a user</a>
         <a class="btn btn-secondary" href="/admin/clubs.html">Create a club</a>
         <a class="btn btn-secondary" href="/admin/announcements.html">Post an announcement</a>
@@ -57,6 +58,10 @@ document.addEventListener("iits:shell-ready", async () => {
     cards[1].textContent = stats.total_coaches;
     cards[2].textContent = stats.total_clubs;
     cards[3].textContent = stats.attendance_today;
+    try {
+      const pendingCerts = await IITS.api("/api/admin/certificates?status_filter=pending");
+      if (pendingCerts.length) document.getElementById("cert-link").textContent = `Review certificates (${pendingCerts.length} pending)`;
+    } catch (e) { /* optional */ }
     document.getElementById("pending-tasks-text").textContent =
       stats.pending_tasks > 0
         ? `${stats.pending_tasks} task${stats.pending_tasks === 1 ? "" : "s"} across all clubs have no submissions yet.`

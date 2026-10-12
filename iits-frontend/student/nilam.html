@@ -54,8 +54,17 @@ async function loadNilam() {
   } catch (e) { IITS.toast(e.message, "error"); }
 }
 
-function openModal() { document.getElementById("nilam-modal").classList.add("open"); }
-function closeModal() { document.getElementById("nilam-modal").classList.remove("open"); document.getElementById("nilam-form").reset(); }
+let nilamDraft = null;
+function openModal() {
+  document.getElementById("nilam-modal").classList.add("open");
+  if (!document.getElementById("date_completed").value) document.getElementById("date_completed").value = new Date().toISOString().slice(0, 10);
+  nilamDraft = IITS.draft.start("#nilam-form", "nilam-new");
+}
+function closeModal() {
+  if (nilamDraft) { nilamDraft.stop(); nilamDraft = null; }
+  document.getElementById("nilam-modal").classList.remove("open");
+  document.getElementById("nilam-form").reset();
+}
 
 document.addEventListener("iits:shell-ready", () => {
   document.getElementById("date_completed").value = new Date().toISOString().slice(0, 10);
@@ -76,6 +85,7 @@ document.addEventListener("iits:shell-ready", () => {
     try {
       await IITS.api("/api/student/nilam", { method: "POST", body: payload });
       IITS.toast("Book logged — PAJSK points added automatically", "success");
+      if (nilamDraft) { nilamDraft.clear(); nilamDraft = null; }
       closeModal();
       loadNilam();
     } catch (err) { IITS.toast(err.message, "error"); }

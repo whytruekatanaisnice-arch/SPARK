@@ -35,6 +35,7 @@ document.addEventListener("iits:shell-ready", async () => {
   const mine = clubs.filter(c => c.coach_id === user.id);
   document.getElementById("club-select").innerHTML = mine.map(c => `<option value="${c.id}">${c.name}</option>`).join("") || `<option value="">No clubs assigned</option>`;
 
+  const draft = IITS.draft.start("#notify-form", "coach-broadcast");
   document.getElementById("notify-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const payload = {
@@ -46,6 +47,7 @@ document.addEventListener("iits:shell-ready", async () => {
     try {
       const res = await IITS.api("/api/coach/notifications/broadcast", { method: "POST", body: payload });
       IITS.toast(res.detail, "success");
+      draft.clear();
       document.getElementById("notify-form").reset();
     } catch (err) { IITS.toast(err.message, "error"); }
   });

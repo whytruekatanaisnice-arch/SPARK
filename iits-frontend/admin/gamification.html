@@ -53,6 +53,12 @@
 <script src="/shared/js/shell.js"></script>
 <script>
 let competitions = [];
+let modalAuto = null, modalDraft = null, didAuto = false;
+function stopModalHelpers() {
+  if (modalAuto) { modalAuto.stop(); modalAuto = null; }
+  if (modalDraft) { modalDraft.stop(); modalDraft = null; }
+  const reload = didAuto; didAuto = false; return reload;
+}
 
 function renderCompetitions() {
   const list = document.getElementById("comp-list");
@@ -111,6 +117,13 @@ function editCompetition(id, evt) {
   document.getElementById("start_date").value = c.start_date;
   document.getElementById("end_date").value = c.end_date;
   openModal();
+  modalAuto = IITS.autosave({
+    fields: ["#name", "#description", "#start_date", "#end_date"], anchor: "#end_date",
+    save: async (p) => {
+      if ("description" in p) p.description = p.description || null;
+      await IITS.api(`/api/admin/inter-club-competitions/${c.id}`, { method: "PATCH", body: p }); didAuto = true;
+    },
+  });
 }
 
 async function deleteCompetition(id, evt) {
@@ -122,16 +135,18 @@ async function deleteCompetition(id, evt) {
 
 function openModal() { document.getElementById("comp-modal").classList.add("open"); }
 function closeModal() {
+  const reload = stopModalHelpers();
   document.getElementById("comp-modal").classList.remove("open");
   document.getElementById("comp-form").reset();
   document.getElementById("comp-id").value = "";
   document.getElementById("modal-title").textContent = "New competition";
   document.getElementById("save-btn").textContent = "Create";
+  if (reload) loadCompetitions();
 }
 
 document.addEventListener("iits:shell-ready", () => {
   loadCompetitions();
-  document.getElementById("new-btn").addEventListener("click", () => { closeModal(); openModal(); });
+  document.getElementById("new-btn").addEventListener("click", () => { closeModal(); openModal(); modalDraft = IITS.draft.start("#comp-form", "competition-new"); });
   document.getElementById("modal-close").addEventListener("click", closeModal);
   document.getElementById("cancel-btn").addEventListener("click", closeModal);
 
@@ -151,6 +166,7 @@ document.addEventListener("iits:shell-ready", () => {
         const params = new URLSearchParams({ name, description: description || "", start_date, end_date });
         await IITS.api("/api/admin/inter-club-competitions?" + params.toString(), { method: "POST" });
         IITS.toast("Competition created", "success");
+        if (modalDraft) { modalDraft.clear(); modalDraft = null; }
       }
       closeModal();
       loadCompetitions();

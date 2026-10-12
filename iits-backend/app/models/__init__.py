@@ -15,3 +15,4 @@ from app.models.message import Conversation, ConversationParticipant, Message  #
 from app.models.pajsk import PajskConfig  # noqa
 from app.models.competition import InterClubCompetition  # noqa
 from app.models.progress import ProgressNote  # noqa
+from app.models.certificate import AbsenceCertificate, CertificateStatus  # noqa

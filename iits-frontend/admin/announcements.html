@@ -46,6 +46,12 @@
 <script src="/shared/js/shell.js"></script>
 <script>
 let announcementsCache = [];
+let modalAuto = null, modalDraft = null, didAuto = false;
+function stopModalHelpers() {
+  if (modalAuto) { modalAuto.stop(); modalAuto = null; }
+  if (modalDraft) { modalDraft.stop(); modalDraft = null; }
+  const reload = didAuto; didAuto = false; return reload;
+}
 
 function timeAgo(iso) {
   const diff = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -98,21 +104,27 @@ function editAnn(id) {
   document.querySelectorAll(".role-box").forEach(b => b.checked = !everyone && a.target_roles.includes(b.value));
 
   openModal();
+  modalAuto = IITS.autosave({
+    fields: ["#title", "#body"], anchor: "#body",
+    save: async (p) => { await IITS.api(`/api/admin/announcements/${a.id}`, { method: "PATCH", body: p }); didAuto = true; },
+  });
 }
 
 function openModal() { document.getElementById("ann-modal").classList.add("open"); }
 function closeModal() {
+  const reload = stopModalHelpers();
   document.getElementById("ann-modal").classList.remove("open");
   document.getElementById("ann-form").reset();
   document.getElementById("ann-id").value = "";
   document.getElementById("role-checks").style.display = "none";
   document.getElementById("modal-title").textContent = "New announcement";
   document.getElementById("save-btn").textContent = "Publish";
+  if (reload) loadAnnouncements();
 }
 
 document.addEventListener("iits:shell-ready", () => {
   loadAnnouncements();
-  document.getElementById("new-btn").addEventListener("click", () => { closeModal(); openModal(); });
+  document.getElementById("new-btn").addEventListener("click", () => { closeModal(); openModal(); modalDraft = IITS.draft.start("#ann-form", "announcement-new"); });
   document.getElementById("modal-close").addEventListener("click", closeModal);
   document.getElementById("cancel-btn").addEventListener("click", closeModal);
   document.getElementById("role-all").addEventListener("change", (e) => {
@@ -132,6 +144,7 @@ document.addEventListener("iits:shell-ready", () => {
       } else {
         await IITS.api("/api/admin/announcements", { method: "POST", body: payload });
         IITS.toast("Announcement published", "success");
+        if (modalDraft) { modalDraft.clear(); modalDraft = null; }
       }
       closeModal();
       loadAnnouncements();

@@ -89,3 +89,16 @@ async def update_profile(payload: UserUpdate, current_user: CurrentUser, db: Asy
     await db.commit()
     await db.refresh(current_user)
     return current_user
+
+
+@router.get("/profile")
+async def my_profile(current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    profile = (await db.execute(select(StudentProfile).where(StudentProfile.user_id == current_user.id))).scalar_one_or_none()
+    return {
+        "id": str(current_user.id),
+        "full_name": current_user.full_name,
+        "email": current_user.email,
+        "phone": current_user.phone,
+        "student_number": profile.student_number if profile else None,
+        "class_name": profile.class_name if profile else None,
+    }

@@ -76,8 +76,16 @@ async function loadTasks() {
   } catch (e) { IITS.toast(e.message, "error"); }
 }
 
-function openModal() { document.getElementById("task-modal").classList.add("open"); }
-function closeModal() { document.getElementById("task-modal").classList.remove("open"); document.getElementById("task-form").reset(); }
+let taskDraft = null;
+function openModal() {
+  document.getElementById("task-modal").classList.add("open");
+  taskDraft = IITS.draft.start("#task-form", "task-new");
+}
+function closeModal() {
+  if (taskDraft) { taskDraft.stop(); taskDraft = null; }
+  document.getElementById("task-modal").classList.remove("open");
+  document.getElementById("task-form").reset();
+}
 
 document.addEventListener("iits:shell-ready", async () => {
   await loadMyClubs();
@@ -98,6 +106,7 @@ document.addEventListener("iits:shell-ready", async () => {
     try {
       await IITS.api("/api/coach/tasks", { method: "POST", body: payload });
       IITS.toast("Task created", "success");
+      if (taskDraft) { taskDraft.clear(); taskDraft = null; }
       closeModal();
       loadTasks();
     } catch (err) { IITS.toast(err.message, "error"); }

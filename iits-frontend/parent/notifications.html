@@ -29,7 +29,7 @@ function timeAgo(iso) {
 async function loadNotifications() {
   const list = document.getElementById("notif-list");
   try {
-    const items = await IITS.api("/api/parent/notifications");
+    const items = await IITS.api("/api/notifications");
     list.innerHTML = items.length
       ? items.map(n => `
         <div class="card" style="${n.is_read ? "" : "border-left:3px solid var(--primary);"}">
@@ -45,7 +45,7 @@ async function loadNotifications() {
 }
 
 async function markRead(id) {
-  try { await IITS.api(`/api/parent/notifications/${id}/read`, { method: "PATCH" }); loadNotifications(); }
+  try { await IITS.api(`/api/notifications/${id}/read`, { method: "PATCH" }); loadNotifications(); if (IITS.refreshBadges) IITS.refreshBadges(); }
   catch (e) { IITS.toast(e.message, "error"); }
 }
 

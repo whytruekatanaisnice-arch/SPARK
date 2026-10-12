@@ -7,6 +7,7 @@ from app.database import get_db
 from app.models.user import User
 from app.schemas.auth import ChangePasswordRequest, LoginRequest, TokenResponse, UserOut
 from app.schemas.common import Message
+from app.schemas.profile import ProfileUpdate
 from app.security import CurrentUser, create_access_token, hash_password, verify_password
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -51,3 +52,19 @@ async def change_password(
     current_user.password_hash = hash_password(payload.new_password)
     await db.commit()
     return Message(detail="Password updated")
+
+
+@router.patch("/profile", response_model=UserOut)
+async def update_my_profile(payload: ProfileUpdate, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    """Self-service profile edit for ANY role. Powers the autosave on every profile page."""
+    data = payload.model_dump(exclude_unset=True)
+    if "full_name" in data:
+        name = (data["full_name"] or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Name can't be empty")
+        data["full_name"] = name
+    for field, value in data.items():
+        setattr(current_user, field, value)
+    await db.commit()
+    await db.refresh(current_user)
+    return UserOut.model_validate(current_user)
