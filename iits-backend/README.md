@@ -1,6 +1,6 @@
-# IITS Backend
+# SPARK Backend
 
-FastAPI backend for IITS (Integrated Information & Tracking System), a
+FastAPI backend for **SPARK (Smart PAJSK & Activity Automation System)**, a
 co-curricular management system for clubs, attendance, student roles,
 achievements, NILAM reading records, certificates, and PAJSK scoring.
 
@@ -235,8 +235,10 @@ instructions and API URL configuration.
 | Student | `student@iits.demo` | `Student@123` |
 | Parent | `parent@iits.demo` | `Parent@123` |
 
-These accounts are for local development only. The seeded student is linked
-to the seeded parent and is a member of the sample Robotics Club.
+These accounts are for local development only. Their `@iits.demo` email
+addresses are retained for compatibility with existing development databases.
+The seeded student is linked to the seeded parent and is a member of the sample
+Robotics Club.
 
 ## API overview
 
@@ -266,7 +268,9 @@ endpoint list, required authentication, and exact request/response schemas.
 4. The frontend routes the user to the dashboard for their role. A `401`
    response clears the saved login state and redirects to the login page.
 
-Do not store or expose backend secrets in the frontend. For production,
+The existing `IITS` JavaScript namespace in the frontend is an internal
+implementation identifier, not the product's displayed name. Do not store or
+expose backend secrets in the frontend. For production,
 consider the security implications of storing authentication tokens in
 browser `localStorage`.
 

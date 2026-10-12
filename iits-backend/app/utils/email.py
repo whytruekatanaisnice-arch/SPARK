@@ -44,28 +44,28 @@ def _send_sync(to_email: str, subject: str, body: str) -> bool:
 
 
 async def send_welcome_email(to_email: str, full_name: str, temp_password: str, role: str) -> bool:
-    subject = "Your IITS account has been created"
+    subject = "Your SPARK account has been created"
     body = (
         f"Hi {full_name},\n\n"
-        f"An IITS account has been created for you as a {role}.\n\n"
+        f"An account for SPARK has been created for you as a {role}.\n\n"
         f"Email: {to_email}\n"
         f"Temporary password: {temp_password}\n\n"
         f"Log in here: {settings.APP_LOGIN_URL}\n"
         f"You'll be able to change your password after logging in.\n\n"
-        f"— IITS"
+        f"— SPARK"
     )
     return await asyncio.to_thread(_send_sync, to_email, subject, body)
 
 
 async def send_password_reset_email(to_email: str, full_name: str, temp_password: str) -> bool:
-    subject = "Your IITS password has been reset"
+    subject = "Your SPARK password has been reset"
     body = (
         f"Hi {full_name},\n\n"
-        f"Your IITS password has been reset by your school admin.\n\n"
+        f"Your SPARK password has been reset by your school admin.\n\n"
         f"New temporary password: {temp_password}\n\n"
         f"Log in here: {settings.APP_LOGIN_URL}\n"
         f"We recommend changing this password after logging in.\n\n"
-        f"— IITS"
+        f"— SPARK"
     )
     return await asyncio.to_thread(_send_sync, to_email, subject, body)
 
@@ -82,8 +82,8 @@ def absence_email_body(recipient_name: str, student_name: str, club_name: str, s
         f"{who} marked ABSENT from {club_name} on {session_date}.\n\n"
         f"If this absence was for a valid reason (illness, family emergency, etc.), "
         f"a supporting certificate or document can be uploaded for the school's review "
-        f"from the Certificates section of the IITS portal: {settings.APP_LOGIN_URL}\n\n"
-        f"— IITS"
+        f"from the Certificates section of the SPARK portal: {settings.APP_LOGIN_URL}\n\n"
+        f"— SPARK"
     )
 
 
@@ -93,7 +93,7 @@ def certificate_submitted_email_body(admin_name: str, student_name: str, club_na
         f"{student_name} has a certificate awaiting your review (absence from {club_name}).\n\n"
         f"Reason given: {reason}\n\n"
         f"Approve or reject it from the Certificates section: {settings.APP_LOGIN_URL}\n\n"
-        f"— IITS"
+        f"— SPARK"
     )
 
 
@@ -107,5 +107,5 @@ def certificate_decision_email_body(recipient_name: str, student_name: str, appr
         f"{whose} certificate submission has been {decision}.\n\n"
         f"{note_line}{outcome}\n\n"
         f"View details at: {settings.APP_LOGIN_URL}\n\n"
-        f"— IITS"
+        f"— SPARK"
     )

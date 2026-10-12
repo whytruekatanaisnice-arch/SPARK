@@ -1,6 +1,6 @@
-# IITS Frontend
+# SPARK Frontend
 
-Static frontend for IITS (Integrated Information & Tracking System). It uses
+Static frontend for **SPARK (Smart PAJSK & Activity Automation System)**. It uses
 HTML, CSS, and browser JavaScript, with no frontend package manager or build
 step. The pages call the FastAPI backend in [`../iits-backend/`](../iits-backend/).
 
@@ -18,7 +18,7 @@ step. The pages call the FastAPI backend in [`../iits-backend/`](../iits-backend
 
 - A modern browser with JavaScript enabled
 - Python 3.11 or later to run the simple local static file server
-- The IITS backend running locally or at a configured API URL
+- The SPARK backend running locally or at a configured API URL
 
 There are no npm dependencies and no compile/build step. For backend
 configuration, database setup, and demo data, see
@@ -117,6 +117,8 @@ The backend `seed.py` script creates these local demo accounts:
 
 The accounts exist only after the backend has been configured and seeded. They
 are for local development only; do not use them in a production deployment.
+Their existing `@iits.demo` email addresses are retained for compatibility
+with already-seeded development databases.
 
 ## How the frontend connects to the backend
 

@@ -101,7 +101,7 @@
       <aside class="sidebar" id="sidebar">
         <div class="sidebar-brand">
           <div class="mark">I</div>
-          <div><div class="name">IITS</div><div class="sub">${BRAND_SUB[role] || ""}</div></div>
+          <div><div class="name">SPARK</div><div class="sub">${BRAND_SUB[role] || ""}</div></div>
         </div>
         <nav class="sidebar-nav">${navHtml}</nav>
         <div class="sidebar-footer">

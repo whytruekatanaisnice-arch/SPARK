@@ -10,7 +10,7 @@ from app.routers import (
 
 app = FastAPI(
     title=settings.APP_NAME,
-    description="Integrated Information & Tracking System for co-curricular clubs, attendance, AJK roles, achievements, NILAM, and PAJSK scoring.",
+    description="Smart PAJSK & Activity Automation System for co-curricular clubs, attendance, AJK roles, achievements, NILAM, and PAJSK scoring.",
     version="1.0.0",
 )
 
@@ -62,4 +62,4 @@ async def health_check():
 
 @app.get("/", tags=["health"])
 async def root():
-    return {"message": "IITS API is running. See /docs for interactive API documentation."}
+    return {"message": "SPARK API is running. See /docs for interactive API documentation."}

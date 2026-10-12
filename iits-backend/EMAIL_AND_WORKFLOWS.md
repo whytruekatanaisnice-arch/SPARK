@@ -2,19 +2,19 @@
 
 ## 1. Enable Gmail sending (App Password)
 
-1. Use a dedicated Gmail account for the school (e.g. `iits.yourschool@gmail.com`) — don't use a personal one.
+1. Use a dedicated Gmail account for the school (e.g. `spark.yourschool@gmail.com`) — don't use a personal one.
 2. Turn on **2-Step Verification**: Google Account → Security → 2-Step Verification.
-3. Open <https://myaccount.google.com/apppasswords>, create an app named `IITS`, and copy the 16-character password.
+3. Open <https://myaccount.google.com/apppasswords>, create an app named `SPARK`, and copy the 16-character password.
 4. Put this in `iits-backend/.env` (password **without spaces**):
 
 ```
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USE_TLS=True
-SMTP_USERNAME=iits.yourschool@gmail.com
+SMTP_USERNAME=spark.yourschool@gmail.com
 SMTP_PASSWORD=abcdefghijklmnop
-SMTP_FROM_EMAIL=iits.yourschool@gmail.com
-SMTP_FROM_NAME=IITS - Your School Name
+SMTP_FROM_EMAIL=spark.yourschool@gmail.com
+SMTP_FROM_NAME=SPARK - Your School Name
 APP_LOGIN_URL=https://your-frontend-domain/login.html
 ```
 5. **Restart uvicorn** (`.env` is only read at startup).

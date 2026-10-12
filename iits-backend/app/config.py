@@ -1,5 +1,5 @@
 """
-Environment configuration for IITS backend.
+Environment configuration for the SPARK backend.
 Loaded once as a singleton `settings` object.
 """
 from functools import lru_cache
@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     # --- App ---
-    APP_NAME: str = "IITS - Integrated Information & Tracking System"
+    APP_NAME: str = "SPARK - Smart PAJSK & Activity Automation System"
     ENV: str = "development"
     DEBUG: bool = True
 
@@ -30,16 +30,14 @@ class Settings(BaseSettings):
     # --- CORS ---
     CORS_ORIGINS: str = "http://localhost:5500,http://127.0.0.1:5500"
 
-    # --- Outbound email (temp passwords on account creation / reset) ---
-    # When SMTP_ENABLED is False (the default), emails are logged instead of
-    # sent — lets you develop locally without real SMTP credentials.
+    # --- Outbound email (temporary passwords and notifications) ---
     SMTP_ENABLED: bool = False
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
     SMTP_USERNAME: str = ""
     SMTP_PASSWORD: str = ""
-    SMTP_FROM_EMAIL: str = "no-reply@iits.local"
-    SMTP_FROM_NAME: str = "IITS School System"
+    SMTP_FROM_EMAIL: str = "no-reply@spark.local"
+    SMTP_FROM_NAME: str = "SPARK School System"
     SMTP_USE_TLS: bool = True
     FRONTEND_LOGIN_URL: str = "http://localhost:5500/login.html"
 
@@ -51,8 +49,8 @@ class Settings(BaseSettings):
     SMTP_USERNAME: str | None = None
     SMTP_PASSWORD: str | None = None
     SMTP_USE_TLS: bool = True
-    SMTP_FROM_EMAIL: str = "no-reply@iits.local"
-    SMTP_FROM_NAME: str = "IITS"
+    SMTP_FROM_EMAIL: str = "no-reply@spark.local"
+    SMTP_FROM_NAME: str = "SPARK"
     APP_LOGIN_URL: str = "http://localhost:5500/login.html"
 
     # --- Pagination ---

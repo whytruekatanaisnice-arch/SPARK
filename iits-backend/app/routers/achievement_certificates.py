@@ -401,7 +401,7 @@ async def _notify_student_family(
     for recipient in recipients.values():
         db.add(Notification(user_id=recipient.id, title=title, body=body))
     await db.commit()
-    email_body = f"{body}\n\nSign in to IITS for details:\n{settings.APP_LOGIN_URL}"
+    email_body = f"{body}\n\nSign in to SPARK for details:\n{settings.APP_LOGIN_URL}"
     for recipient in recipients.values():
         if not await send_email(recipient.email, subject, email_body):
             logger.warning("PAJSK certificate status email failed for user %s", recipient.id)
