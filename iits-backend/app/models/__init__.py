@@ -16,3 +16,6 @@ from app.models.pajsk import PajskConfig  # noqa
 from app.models.competition import InterClubCompetition  # noqa
 from app.models.progress import ProgressNote  # noqa
 from app.models.certificate import AbsenceCertificate, CertificateStatus  # noqa
+from app.models.draft import AutosaveDraft  # noqa
+from app.models.segak import SegakAssessment  # noqa
+from app.models.achievement_certificate import CompetitionCertificate, CompetitionCertificateStatus  # noqa
