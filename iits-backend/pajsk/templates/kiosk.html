@@ -1,0 +1,89 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Scanner · PAJSK Attendance</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<style>
+  .ribbon{display:flex;flex-wrap:wrap;gap:.5rem 2rem;align-items:center;justify-content:space-between;
+    background:var(--accent);color:var(--accent-ink);padding:.8rem 1.1rem;border-radius:var(--radius);margin-bottom:1.25rem}
+  .ribbon b{display:block;font-size:.8rem;font-weight:600;opacity:.8}
+  .ribbon a{color:var(--accent-ink)}
+  .stage{max-width:760px;margin:0 auto}
+  .frame{position:relative;border:10px solid transparent;border-radius:16px;transition:border-color .15s}
+  .frame.ok{border-color:var(--ok)} .frame.bad{border-color:var(--bad)}
+  .banner{position:absolute;left:0;right:0;bottom:0;padding:1rem;text-align:center;font-size:1.4rem;font-weight:700;
+    color:#fff;display:none}
+  .frame.ok .banner{display:block;background:var(--ok)} .frame.bad .banner{display:block;background:var(--bad)}
+  .banner small{display:block;font-size:.85rem;font-weight:500}
+  .start{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6)}
+  .start .btn{margin:0;font-size:1.1rem}
+  #status{text-align:center;margin-top:.75rem}
+</style></head>
+<body><main class="wrap">
+<div class="ribbon">
+  <div><b>Coach</b>{{ user }}</div>
+  <div><b>{{ category }}</b>{{ club }}</div>
+  <div><b>Date</b>{{ today }}</div>
+  <a href="{{ url_for('setup') }}">Change session</a>
+</div>
+<div class="stage">
+  <div class="frame" id="frame">
+    <div class="video-box"><video id="cam" autoplay playsinline muted></video>
+      <div class="start" id="start"><button class="btn" id="startBtn" type="button">Start camera and scanning</button></div>
+    </div>
+    <div class="banner" id="banner" role="status" aria-live="assertive"></div>
+  </div>
+  <p id="status" class="muted">Camera is off.</p>
+</div>
+<canvas id="grab" hidden></canvas>
+</main>
+<script>
+const INTERVAL_MS=2500, MAX_W=640;
+const cam=document.getElementById('cam'),grab=document.getElementById('grab'),frame=document.getElementById('frame'),
+      banner=document.getElementById('banner'),statusEl=document.getElementById('status');
+let audio,inFlight=false,clearTimer;
+
+function ding(){ // two-note success chime via Web Audio
+  if(!audio)return;const t=audio.currentTime;
+  [[880,0],[1318.5,0.12]].forEach(([f,d])=>{
+    const o=audio.createOscillator(),g=audio.createGain();
+    o.type='sine';o.frequency.value=f;o.connect(g);g.connect(audio.destination);
+    g.gain.setValueAtTime(0.0001,t+d);g.gain.exponentialRampToValueAtTime(0.35,t+d+0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+d+0.5);o.start(t+d);o.stop(t+d+0.55);
+  });
+}
+function flash(kind,html){
+  frame.className='frame '+kind;banner.innerHTML=html;
+  clearTimeout(clearTimer);clearTimer=setTimeout(()=>{frame.className='frame';banner.innerHTML=''},2200);
+}
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function scan(){
+  if(inFlight||!cam.videoWidth)return;
+  inFlight=true;
+  try{
+    const scale=Math.min(1,MAX_W/cam.videoWidth);
+    grab.width=Math.round(cam.videoWidth*scale);grab.height=Math.round(cam.videoHeight*scale);
+    grab.getContext('2d').drawImage(cam,0,0,grab.width,grab.height);
+    const r=await fetch('/api/scan',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({image:grab.toDataURL('image/jpeg',0.7)})});
+    if(r.status===401){location.href='/login';return}
+    const d=await r.json();
+    if(d.status==='found'){
+      ding();
+      flash('ok',`Check-in Successful: ${esc(d.name)}`+(d.logged?'':'<small>Already recorded in the last minute</small>'));
+    }else if(d.status==='unknown'){
+      flash('bad','Student Not Found / Missing Biometric Profile');
+    }
+    statusEl.textContent='Scanning…';
+  }catch(e){statusEl.textContent='Connection problem. Retrying…'}
+  finally{inFlight=false}
+}
+document.getElementById('startBtn').addEventListener('click',async()=>{
+  audio=new (window.AudioContext||window.webkitAudioContext)();audio.resume();  // needs a user gesture
+  try{
+    cam.srcObject=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280},height:{ideal:720},facingMode:'user'},audio:false});
+    document.getElementById('start').style.display='none';
+    statusEl.textContent='Scanning…';
+    setInterval(scan,INTERVAL_MS);
+  }catch(e){statusEl.textContent='Camera unavailable. Allow camera access (page must be on localhost or HTTPS).'}
+});
+</script></body></html>

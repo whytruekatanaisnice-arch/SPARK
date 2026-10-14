@@ -1,0 +1,11 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in · PAJSK Attendance</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
+<body><main class="wrap narrow">
+<h1>PAJSK Attendance</h1><p class="muted">Sign in with your coach or admin account.</p>
+<form class="card" method="post" style="margin-top:1.25rem">
+  <label for="u">Username</label><input id="u" name="username" autocomplete="username" required autofocus>
+  <label for="p">Password</label><input id="p" name="password" type="password" autocomplete="current-password" required>
+  {% if error %}<div class="msg error" role="alert">{{ error }}</div>{% endif %}
+  <button class="btn" type="submit">Sign in</button>
+</form></main></body></html>
