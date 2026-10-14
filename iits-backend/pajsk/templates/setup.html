@@ -1,0 +1,26 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Session setup · PAJSK Attendance</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
+<body><main class="wrap narrow">
+<div class="topbar"><div><h1>Start a session</h1><p class="muted">Signed in as {{ user }}</p></div>
+<nav>{% if role == 'admin' %}<a href="{{ url_for('admin') }}">Enrol faces</a> · {% endif %}<a href="{{ url_for('logout') }}">Sign out</a></nav></div>
+<form class="card" method="post">
+  <label for="category">Co-curriculum category</label>
+  <select id="category" name="category" required>
+    <option value="" disabled {{ '' if category else 'selected' }}>Choose a category</option>
+    {% for c in categories %}<option value="{{ c }}" {{ 'selected' if c == category }}>{{ c }}</option>{% endfor %}
+  </select>
+  <label for="club">Club or activity name</label>
+  <input id="club" name="club" maxlength="80" value="{{ club or '' }}" list="suggest" placeholder="e.g. Bola Sepak" required>
+  <datalist id="suggest"></datalist>
+  {% if error %}<div class="msg error" role="alert">{{ error }}</div>{% endif %}
+  <button class="btn" type="submit">Save and open scanner</button>
+</form></main>
+<script>
+const SUGGEST={"Sukan/Permainan":["Bola Sepak","Badminton","Bola Jaring","Olahraga","Sepak Takraw"],
+"Kelab/Persatuan":["Persatuan Bahasa Melayu","Kelab Robotik","Persatuan Sains","Kelab Seni"],
+"Unit Beruniform":["Pengakap","Kadet Polis","Kadet Bomba","Puteri Islam","Kadet Remaja Sekolah"]};
+const sel=document.getElementById('category'),dl=document.getElementById('suggest');
+function fill(){dl.innerHTML=(SUGGEST[sel.value]||[]).map(v=>`<option value="${v}">`).join('')}
+sel.addEventListener('change',fill);fill();
+</script></body></html>

@@ -1,0 +1,6 @@
+flask>=3.0
+deepface>=0.0.93
+tf-keras
+opencv-python
+numpy
+pillow

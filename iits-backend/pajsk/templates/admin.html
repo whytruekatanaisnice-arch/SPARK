@@ -1,0 +1,56 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Enrol faces · PAJSK Attendance</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
+<body><main class="wrap">
+<div class="topbar"><div><h1>Enrol a student's face</h1><p class="muted">Signed in as {{ user }}</p></div>
+<nav><a href="{{ url_for('setup') }}">Start a session</a> · <a href="{{ url_for('logout') }}">Sign out</a></nav></div>
+<div class="grid">
+  <section class="card">
+    <div class="video-box"><video id="cam" autoplay playsinline muted></video></div>
+    <p class="hint">One student in frame, facing the camera, in good light. Re-enrolling an IC replaces the old photo.</p>
+  </section>
+  <section class="card">
+    <label for="name" style="margin-top:0">Student full name</label>
+    <input id="name" maxlength="80" autocomplete="off" placeholder="Alex Tan">
+    <label for="ic">MyKAD / IC number</label>
+    <input id="ic" inputmode="numeric" maxlength="14" autocomplete="off" placeholder="050412140123">
+    <button class="btn" id="go" type="button" disabled>Capture &amp; Register Face</button>
+    <div id="out" role="status" aria-live="polite"></div>
+  </section>
+</div>
+<section class="card" style="margin-top:1.25rem"><h2>Enrolled students (<span id="count">0</span>)</h2>
+<table><thead><tr><th>IC</th><th>Name</th></tr></thead><tbody id="rows"></tbody></table></section>
+<canvas id="snap" hidden></canvas>
+</main>
+<script>
+const cam=document.getElementById('cam'),snap=document.getElementById('snap'),go=document.getElementById('go'),out=document.getElementById('out');
+function say(t,c){out.innerHTML=`<div class="msg ${c}">${t.replace(/</g,'&lt;')}</div>`}
+async function start(){
+  try{
+    cam.srcObject=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280},height:{ideal:720},facingMode:'user'},audio:false});
+    go.disabled=false;
+  }catch(e){say('Camera unavailable. Allow camera access (page must be on localhost or HTTPS).','error')}
+}
+async function students(){
+  const r=await fetch('/api/students');const d=await r.json();
+  document.getElementById('count').textContent=d.students.length;
+  const tb=document.getElementById('rows');tb.innerHTML='';
+  d.students.forEach(s=>{const tr=tb.insertRow();tr.insertCell().textContent=s.ic;tr.insertCell().textContent=s.name});
+}
+go.addEventListener('click',async()=>{
+  if(!cam.videoWidth)return say('Camera is not ready yet.','error');
+  snap.width=cam.videoWidth;snap.height=cam.videoHeight;
+  snap.getContext('2d').drawImage(cam,0,0);               // un-mirrored frame for recognition
+  const image=snap.toDataURL('image/jpeg',0.92);
+  go.disabled=true;say('Checking the photo…','');
+  try{
+    const r=await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name:document.getElementById('name').value,ic:document.getElementById('ic').value,image})});
+    const d=await r.json();
+    if(d.status==='ok'){say(`Registered ${d.name} (${d.ic}).`,'ok');document.getElementById('name').value='';document.getElementById('ic').value='';students()}
+    else say(d.message||'Registration failed.','error');
+  }catch(e){say('Could not reach the server.','error')}
+  go.disabled=false;
+});
+start();students();
+</script></body></html>
