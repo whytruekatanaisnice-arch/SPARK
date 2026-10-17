@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_ROLE_KEY: str
     SUPABASE_STORAGE_BUCKET: str = "submissions"
 
+    # --- Optional PAJSK FaceNet512 recognition service ---
+    PAJSK_FACE_SERVICE_URL: str | None = None
+    PAJSK_FACE_SERVICE_TOKEN: str | None = None
+
     # --- Auth / JWT ---
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"

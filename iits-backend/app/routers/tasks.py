@@ -6,9 +6,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.models.attendance import AttendanceSession
+from app.models.club import Club
 from app.models.task import Feedback, Submission, Task
 from app.schemas.task import FeedbackCreate, FeedbackOut, SubmissionCreate, SubmissionOut, TaskCreate, TaskOut
 from app.security import CurrentUser, require_coach, require_student
+from app.models.user import UserRole
 
 # ---------------- Coach side ----------------
 
@@ -17,6 +20,17 @@ coach_router = APIRouter(prefix="/api/coach", tags=["coach:tasks"], dependencies
 
 @coach_router.post("/tasks", response_model=TaskOut, status_code=status.HTTP_201_CREATED)
 async def create_task(payload: TaskCreate, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    club = await db.get(Club, payload.club_id)
+    if not club:
+        raise HTTPException(status_code=404, detail="Club not found")
+    if current_user.role != UserRole.ADMIN and club.coach_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only create tasks for your own clubs")
+    if payload.session_id:
+        session = await db.get(AttendanceSession, payload.session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        if session.club_id != payload.club_id:
+            raise HTTPException(status_code=400, detail="Task session must belong to the selected club")
     task = Task(**payload.model_dump(), created_by=current_user.id)
     db.add(task)
     await db.commit()
@@ -25,8 +39,26 @@ async def create_task(payload: TaskCreate, current_user: CurrentUser, db: AsyncS
 
 
 @coach_router.get("/tasks", response_model=list[TaskOut])
-async def list_tasks_for_club(club_id: UUID, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Task).where(Task.club_id == club_id).order_by(Task.created_at.desc()))
+async def list_tasks_for_club(
+    club_id: UUID,
+    current_user: CurrentUser,
+    session_id: UUID | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    club = await db.get(Club, club_id)
+    if not club:
+        raise HTTPException(status_code=404, detail="Club not found")
+    if current_user.role != UserRole.ADMIN and club.coach_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only view tasks for your own clubs")
+    stmt = select(Task).where(Task.club_id == club_id)
+    if session_id:
+        session = await db.get(AttendanceSession, session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        if session.club_id != club_id:
+            raise HTTPException(status_code=400, detail="Session does not belong to the selected club")
+        stmt = stmt.where(Task.session_id == session_id)
+    result = await db.execute(stmt.order_by(Task.created_at.desc()))
     return result.scalars().all()
 
 

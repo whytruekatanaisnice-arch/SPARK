@@ -66,6 +66,7 @@
       <div class="field"><label for="phone">Phone (optional)</label><input type="text" id="phone"></div>
 
       <div id="student-fields">
+        <div class="field"><label for="ic_number">Student IC number (for face recognition)</label><input type="text" id="ic_number" inputmode="numeric" maxlength="20" placeholder="12-digit IC number"></div>
         <div class="form-row">
           <div class="field"><label for="student_number">Student number</label><input type="text" id="student_number"></div>
           <div class="field"><label for="class_name">Class</label><input type="text" id="class_name" placeholder="e.g. 3 Bestari"></div>
@@ -92,12 +93,34 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="face-modal">
+  <div class="modal">
+    <div class="modal-head"><h2 id="face-modal-title">Register student face</h2><button class="modal-close" id="face-modal-close">✕</button></div>
+    <p class="muted" id="face-student-label"></p>
+    <div class="field"><label for="face-ic">Student IC number</label><input type="text" id="face-ic" inputmode="numeric" maxlength="20" required placeholder="12-digit IC number"></div>
+    <div class="card" style="text-align:center;">
+      <video id="face-enrollment-camera" autoplay playsinline muted style="width:100%;max-width:480px;max-height:360px;object-fit:cover;border-radius:var(--radius-card);background:#111;"></video>
+      <canvas id="face-enrollment-capture" style="display:none;"></canvas>
+      <p class="muted" id="face-enrollment-status">Frame exactly one student, facing the camera, in good light.</p>
+      <div class="flex gap-8" style="justify-content:center;">
+        <button type="button" class="btn btn-secondary" id="start-enrollment-camera">Start camera</button>
+        <button type="button" class="btn btn-primary" id="save-student-face" disabled>Capture &amp; register</button>
+        <button type="button" class="btn btn-ghost" id="stop-enrollment-camera" disabled>Stop camera</button>
+      </div>
+    </div>
+    <p class="hint">Registering an already-enrolled IC replaces its existing face photo.</p>
+  </div>
+</div>
+
 <script src="/shared/js/config.js"></script>
 <script src="/shared/js/toast.js"></script>
 <script src="/shared/js/api.js"></script>
 <script src="/shared/js/shell.js"></script>
 <script>
 let allUsers = [];
+let faceEnrollments = {};
+let enrollmentStream = null;
+let enrollmentStudentId = null;
 
 function badgeForRole(role) {
   const map = { admin: "blue", coach: "green", student: "yellow", parent: "grey" };
@@ -117,10 +140,103 @@ function renderUsers(users) {
       <td>${badgeForRole(u.role)}</td>
       <td>${u.is_active ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-red">Deactivated</span>'}</td>
       <td class="flex gap-8">
+        ${u.role === "student" && u.is_active ? `<button class="btn btn-secondary btn-sm" onclick="openFaceEnrollment('${u.id}')">${faceEnrollments[u.id]?.face_enrolled ? "Update face" : "Register face"}</button>` : ""}
         <button class="btn btn-secondary btn-sm" onclick="resetPassword('${u.id}')">Reset password</button>
         <button class="btn btn-danger btn-sm" onclick="deactivateUser('${u.id}')">${u.is_active ? "Deactivate" : "Deactivated"}</button>
       </td>
     </tr>`).join("");
+}
+
+async function loadFaceEnrollments() {
+  try {
+    const students = await IITS.api("/api/admin/face-enrollments");
+    faceEnrollments = Object.fromEntries(students.map(student => [student.user_id, student]));
+    renderUsers(allUsers);
+  } catch (e) {
+    IITS.toast(`Face enrollment status unavailable: ${e.message}`, "error");
+  }
+}
+
+async function openFaceEnrollment(userId) {
+  const student = faceEnrollments[userId];
+  if (!student) {
+    IITS.toast("Student face-enrollment details are unavailable. Check the recognition service.", "error");
+    return;
+  }
+  enrollmentStudentId = userId;
+  document.getElementById("face-modal-title").textContent = student.face_enrolled ? "Update student face" : "Register student face";
+  document.getElementById("face-student-label").textContent = `${student.full_name} · ${student.student_number}`;
+  document.getElementById("face-ic").value = student.ic_number || "";
+  document.getElementById("face-enrollment-status").textContent = "Frame exactly one student, facing the camera, in good light.";
+  document.getElementById("face-modal").classList.add("open");
+}
+
+function closeFaceEnrollment() {
+  stopEnrollmentCamera();
+  enrollmentStudentId = null;
+  document.getElementById("face-modal").classList.remove("open");
+}
+
+async function startEnrollmentCamera() {
+  if (enrollmentStream) return;
+  try {
+    enrollmentStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "user" }, width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false,
+    });
+    const video = document.getElementById("face-enrollment-camera");
+    video.srcObject = enrollmentStream;
+    await video.play();
+    document.getElementById("save-student-face").disabled = false;
+    document.getElementById("stop-enrollment-camera").disabled = false;
+  } catch (e) {
+    enrollmentStream = null;
+    document.getElementById("face-enrollment-status").textContent = `Camera unavailable: ${e.message}`;
+    IITS.toast("Allow camera access and use localhost or HTTPS", "error");
+  }
+}
+
+function stopEnrollmentCamera() {
+  if (enrollmentStream) enrollmentStream.getTracks().forEach(track => track.stop());
+  enrollmentStream = null;
+  document.getElementById("face-enrollment-camera").srcObject = null;
+  document.getElementById("save-student-face").disabled = true;
+  document.getElementById("stop-enrollment-camera").disabled = true;
+}
+
+async function saveStudentFace() {
+  const video = document.getElementById("face-enrollment-camera");
+  const icNumber = document.getElementById("face-ic").value.trim();
+  if (!enrollmentStudentId || !enrollmentStream) return;
+  if (!/^\d{12}$/.test(icNumber.replace(/[\s-]/g, ""))) {
+    IITS.toast("Enter a valid 12-digit student IC number", "error");
+    return;
+  }
+  if (!video.videoWidth || !video.videoHeight) {
+    IITS.toast("Wait for the camera image, then try again", "error");
+    return;
+  }
+  const canvas = document.getElementById("face-enrollment-capture");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+  const button = document.getElementById("save-student-face");
+  button.disabled = true;
+  document.getElementById("face-enrollment-status").textContent = "Validating and saving the face photo…";
+  try {
+    await IITS.api(`/api/admin/users/${enrollmentStudentId}/face`, {
+      method: "POST",
+      body: { ic_number: icNumber, image: canvas.toDataURL("image/jpeg", 0.82) },
+    });
+    IITS.toast("Student face registered", "success");
+    await loadFaceEnrollments();
+    closeFaceEnrollment();
+  } catch (e) {
+    document.getElementById("face-enrollment-status").textContent = e.message;
+    IITS.toast(e.message, "error");
+  } finally {
+    button.disabled = !enrollmentStream;
+  }
 }
 
 async function loadUsers() {
@@ -176,6 +292,12 @@ document.addEventListener("iits:shell-ready", () => {
   document.getElementById("modal-close").addEventListener("click", closeModal);
   document.getElementById("cancel-btn").addEventListener("click", closeModal);
   document.getElementById("role").addEventListener("change", toggleRoleFields);
+  document.getElementById("face-modal-close").addEventListener("click", closeFaceEnrollment);
+  document.getElementById("start-enrollment-camera").addEventListener("click", startEnrollmentCamera);
+  document.getElementById("stop-enrollment-camera").addEventListener("click", stopEnrollmentCamera);
+  document.getElementById("save-student-face").addEventListener("click", saveStudentFace);
+  window.addEventListener("pagehide", stopEnrollmentCamera);
+  loadFaceEnrollments();
 
   document.getElementById("user-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -184,6 +306,7 @@ document.addEventListener("iits:shell-ready", () => {
       email: document.getElementById("email").value.trim(),
       role: document.getElementById("role").value,
       phone: document.getElementById("phone").value.trim() || null,
+      ic_number: document.getElementById("ic_number").value.trim() || null,
       student_number: document.getElementById("student_number").value.trim() || null,
       class_name: document.getElementById("class_name").value.trim() || null,
       staff_number: document.getElementById("staff_number").value.trim() || null,
@@ -196,7 +319,7 @@ document.addEventListener("iits:shell-ready", () => {
       await IITS.api("/api/admin/users", { method: "POST", body: payload });
       IITS.toast("User created", "success");
       closeModal();
-      loadUsers();
+      await Promise.all([loadUsers(), loadFaceEnrollments()]);
     } catch (e2) { IITS.toast(e2.message, "error"); }
   });
 
@@ -209,7 +332,7 @@ document.addEventListener("iits:shell-ready", () => {
       const result = await IITS.api("/api/admin/users/bulk-import", { method: "POST", body: formData, isForm: true });
       IITS.toast(`Imported ${result.created} student(s), skipped ${result.skipped}.`, "success");
       if (result.errors && result.errors.length) console.warn("Bulk import errors:", result.errors);
-      loadUsers();
+      await Promise.all([loadUsers(), loadFaceEnrollments()]);
     } catch (err) { IITS.toast(err.message, "error"); }
     e.target.value = "";
   });

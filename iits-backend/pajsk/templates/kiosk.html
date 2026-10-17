@@ -22,7 +22,7 @@
   <div><b>Coach</b>{{ user }}</div>
   <div><b>{{ category }}</b>{{ club }}</div>
   <div><b>Date</b>{{ today }}</div>
-  <a href="{{ url_for('setup') }}">Change session</a>
+  <span><a href="{{ url_for('manual') }}">Manual attendance</a> &nbsp;|&nbsp; <a href="{{ url_for('setup') }}">Change session</a></span>
 </div>
 <div class="stage">
   <div class="frame" id="frame">
@@ -84,6 +84,6 @@ document.getElementById('startBtn').addEventListener('click',async()=>{
     document.getElementById('start').style.display='none';
     statusEl.textContent='Scanning…';
     setInterval(scan,INTERVAL_MS);
-  }catch(e){statusEl.textContent='Camera unavailable. Allow camera access (page must be on localhost or HTTPS).'}
+  }catch(e){statusEl.innerHTML='Camera unavailable. Allow camera access (page must be on localhost or HTTPS), or <a href="{{ url_for('manual') }}">take attendance manually</a>.'}
 });
 </script></body></html>

@@ -59,6 +59,16 @@ async def setup_database() -> None:
         await conn.run_sync(Base.metadata.create_all)
 
         await conn.execute(text("""
+            ALTER TABLE public.tasks
+                ADD COLUMN IF NOT EXISTS session_id uuid
+                REFERENCES public.attendance_sessions(id)
+        """))
+        await conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS ix_tasks_session_id
+                ON public.tasks (session_id)
+        """))
+
+        await conn.execute(text("""
             DO $$
             BEGIN
                 CREATE TYPE public.certificate_status AS ENUM ('pending', 'approved', 'rejected');

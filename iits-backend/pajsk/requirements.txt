@@ -4,3 +4,4 @@ tf-keras
 opencv-python
 numpy
 pillow
+python-dotenv>=1.0

@@ -1,0 +1,83 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Manual attendance · PAJSK Attendance</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<style>
+  .bar{display:flex;flex-wrap:wrap;gap:.75rem;align-items:end}
+  .bar>div{flex:1 1 180px}
+  .bar label{margin-top:0}
+  .list{max-height:55vh;overflow:auto;border:1px solid var(--line);border-radius:8px;margin-top:1rem}
+  .row{display:flex;gap:.75rem;align-items:center;padding:.6rem .8rem;border-bottom:1px solid var(--line);cursor:pointer}
+  .row:last-child{border-bottom:0}
+  .row input{width:1.25rem;height:1.25rem;flex:none}
+  .row .who{flex:1;min-width:0}
+  .row .sub{font-size:.85rem;color:var(--muted)}
+  .row.done{opacity:.6;cursor:default}
+  .tag{font-size:.8rem;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:.1rem .6rem}
+  .sticky{position:sticky;bottom:0;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:.8rem 1rem;margin-top:1rem;display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap}
+  .sticky .btn{margin:0}
+</style></head>
+<body><main class="wrap">
+<div class="topbar"><div><h1>Manual attendance</h1>
+<p class="muted">{{ category }}: {{ club }} · {{ today }} · Coach {{ user }}</p></div>
+<nav><a href="{{ url_for('kiosk') }}">Back to scanner</a> · <a href="{{ url_for('setup') }}">Change session</a></nav></div>
+
+<section class="card">
+  <div class="bar">
+    <div><label for="q">Search name or IC</label><input id="q" autocomplete="off" placeholder="Type to filter"></div>
+    <div><label for="cls">Class</label><select id="cls"><option value="">All classes</option></select></div>
+    <div><label for="why">Reason for manual entry</label>
+      <select id="why"><option>Camera not working</option><option>Face not recognised</option>
+      <option>No biometric profile yet</option><option>Other</option></select></div>
+  </div>
+  <div style="display:flex;gap:.5rem;margin-top:1rem;flex-wrap:wrap">
+    <button class="btn secondary" id="selVis" type="button" style="margin:0">Tick all shown</button>
+    <button class="btn secondary" id="clrAll" type="button" style="margin:0">Clear ticks</button>
+  </div>
+  <div class="list" id="list" role="group" aria-label="Student list"></div>
+  <p id="empty" class="muted" hidden style="margin-top:1rem">No students found. Ask the admin to enrol faces or import the class roster.</p>
+  <div class="sticky"><span><b id="n">0</b> ticked</span>
+    <button class="btn" id="save" type="button" disabled>Save attendance</button></div>
+  <div id="out" role="status" aria-live="polite"></div>
+</section></main>
+<script>
+let all=[],picked=new Set();
+const $=id=>document.getElementById(id),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function visible(){const q=$('q').value.trim().toLowerCase(),c=$('cls').value;
+  return all.filter(s=>(!c||s.cls===c)&&(!q||s.name.toLowerCase().includes(q)||s.ic.includes(q)))}
+function render(){
+  const v=visible();$('empty').hidden=all.length>0;
+  $('list').innerHTML=v.map(s=>`<label class="row ${s.done?'done':''}">
+    <input type="checkbox" data-ic="${s.ic}" ${s.done?'disabled checked':''} ${picked.has(s.ic)?'checked':''}>
+    <span class="who">${esc(s.name)}<span class="sub"><br>${s.ic}${s.cls?' · '+esc(s.cls):''}</span></span>
+    ${s.done?'<span class="tag">Already recorded today</span>':(s.enrolled?'':'<span class="tag">No face photo</span>')}</label>`).join('');
+  $('n').textContent=picked.size;$('save').disabled=picked.size===0;
+}
+$('list').addEventListener('change',e=>{const ic=e.target.dataset.ic;if(!ic)return;
+  e.target.checked?picked.add(ic):picked.delete(ic);$('n').textContent=picked.size;$('save').disabled=!picked.size});
+['q','cls'].forEach(i=>$(i).addEventListener('input',render));
+$('selVis').onclick=()=>{visible().filter(s=>!s.done).forEach(s=>picked.add(s.ic));render()};
+$('clrAll').onclick=()=>{picked.clear();render()};
+async function load(){
+  const r=await fetch('/api/roster');if(r.status===401){location.href='/login';return}
+  all=(await r.json()).students;picked.clear();
+  const cs=[...new Set(all.map(s=>s.cls).filter(Boolean))].sort();
+  $('cls').innerHTML='<option value="">All classes</option>'+cs.map(c=>`<option>${esc(c)}</option>`).join('');
+  render();
+}
+$('save').onclick=async()=>{
+  if(!confirm(`Save attendance for ${picked.size} student(s)?`))return;
+  $('save').disabled=true;
+  try{
+    const r=await fetch('/api/manual-attendance',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ics:[...picked],reason:$('why').value})});
+    const d=await r.json();
+    $('out').innerHTML=d.status==='ok'
+      ?`<div class="msg ok">Saved ${d.saved} student(s).${d.skipped?` ${d.skipped} already recorded today, skipped.`:''}</div>`
+      :`<div class="msg error">${esc(d.message||'Save failed.')}</div>`;
+    if(d.status==='ok')await load();
+  }catch(e){$('out').innerHTML='<div class="msg error">Could not reach the server. Your ticks are kept; try again.</div>'}
+  $('save').disabled=picked.size===0;
+};
+load();
+</script></body></html>

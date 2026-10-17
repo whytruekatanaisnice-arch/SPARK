@@ -20,6 +20,11 @@
 </div>
 <section class="card" style="margin-top:1.25rem"><h2>Enrolled students (<span id="count">0</span>)</h2>
 <table><thead><tr><th>IC</th><th>Name</th></tr></thead><tbody id="rows"></tbody></table></section>
+<section class="card" style="margin-top:1.25rem"><h2>Import class roster (for manual attendance)</h2>
+<p class="hint">CSV with columns <b>IC</b>, <b>Name</b> and optionally <b>Class</b>. Students without a face photo can then still be ticked in manual attendance.</p>
+<input id="rosterFile" type="file" accept=".csv,text/csv">
+<button class="btn secondary" id="rosterGo" type="button">Import roster</button>
+<div id="rosterOut" role="status" aria-live="polite"></div></section>
 <canvas id="snap" hidden></canvas>
 </main>
 <script>
@@ -51,6 +56,14 @@ go.addEventListener('click',async()=>{
     else say(d.message||'Registration failed.','error');
   }catch(e){say('Could not reach the server.','error')}
   go.disabled=false;
+});
+document.getElementById('rosterGo').addEventListener('click',async()=>{
+  const f=document.getElementById('rosterFile').files[0],o=document.getElementById('rosterOut');
+  if(!f){o.innerHTML='<div class="msg error">Choose a CSV file first.</div>';return}
+  const fd=new FormData();fd.append('file',f);
+  const r=await fetch('/api/roster/import',{method:'POST',body:fd});const d=await r.json();
+  o.innerHTML=d.status==='ok'?`<div class="msg ok">Imported ${d.added} students (${d.bad} rows skipped). Roster total: ${d.total}.</div>`
+    :`<div class="msg error">${(d.message||'Import failed.').replace(/</g,'&lt;')}</div>`;
 });
 start();students();
 </script></body></html>

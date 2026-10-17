@@ -18,8 +18,10 @@ and connecting it to the static frontend in [`../iits-frontend/`](../iits-fronte
 - [Run the full application](#run-the-full-application)
 - [Demo accounts](#demo-accounts)
 - [API overview](#api-overview)
+- [Coach sessions and tasks](#coach-sessions-and-tasks)
 - [Authentication and frontend behavior](#authentication-and-frontend-behavior)
 - [PAJSK scoring](#pajsk-scoring)
+- [Face-recognition attendance](#face-recognition-attendance)
 - [Bulk student import](#bulk-student-import)
 - [Configuration reference](#configuration-reference)
 - [Troubleshooting](#troubleshooting)
@@ -218,7 +220,8 @@ skipped.
 The project does not currently use Alembic migrations for schema changes.
 `create_all` creates missing tables but does not automatically migrate arbitrary
 schema changes. `seed.py` includes the additive compatibility migration needed
-for the known legacy absence-certificate table. Back up existing databases
+for the known legacy absence-certificate table and adds the nullable
+`tasks.session_id` link used by coach session tasks. Back up existing databases
 before running setup, and use a reviewed migration process for future
 production schema changes.
 
@@ -328,6 +331,74 @@ profiles. Attendance, role assignments, achievements, and NILAM records can
 trigger recalculation automatically. Scoring values are stored in the
 `pajsk_config` table by category, key, and year; the seed script inserts
 development defaults for 2026, as configured in `seed.py`.
+
+## Face-recognition attendance
+
+Coach attendance can use the existing PAJSK FaceNet512 recognizer. It compares
+a captured camera frame with enrolled photos; it does not train a new model.
+When a face matches, SPARK maps the enrollment IC number to an active member
+of the selected club and marks that student present in the open session. The
+recognizer service does not write a separate attendance CSV for these scans.
+The coach saves the attendance in SPARK. The manual checklist remains
+available as a fallback if face recognition or the camera is unavailable.
+
+This bridge is optional and disabled until both applications are configured.
+The main `requirements.txt` and `pajsk/requirements.txt` both include the
+recognizer's dependencies. Installing the main requirements also installs the
+large DeepFace/ML packages in the SPARK backend environment; a separate PAJSK
+environment is still recommended to keep the API environment lean. A SPARK
+admin creates the student account, opens the
+**Register face** action in Admin → Users, and captures the student on camera.
+The student's 12-digit IC is saved to the SPARK profile and associated with
+the reference photo. Re-registering the photo updates it. The PAJSK service's
+legacy face-registration API is disabled; enrollment is available only via
+the authenticated SPARK admin API.
+
+To install and run PAJSK in its own environment:
+
+```powershell
+cd .\pajsk
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+```
+
+Alternatively, when the main backend environment has been installed from
+`iits-backend\requirements.txt`, it already contains the PAJSK dependencies.
+From `iits-backend`, start the service with:
+
+```powershell
+.\.venv\Scripts\python.exe .\pajsk\app.py
+```
+
+Set these values in `iits-backend/.env`:
+
+```dotenv
+PAJSK_FACE_SERVICE_URL=http://127.0.0.1:5000
+PAJSK_FACE_SERVICE_TOKEN=<a-long-random-secret>
+```
+
+PAJSK loads `PAJSK_FACE_SERVICE_TOKEN` from that `.env` automatically as its
+recognition token, so there is no need to set it again in PowerShell. Restart
+both services after editing `.env`. Open a coach attendance
+session and use **Face recognition** to capture one student at a time. Use
+localhost or HTTPS for camera access. Captured scan frames are sent to the
+recognition service for matching; they are not enrolled or saved as photos by
+the SPARK scan endpoint. Enrolled photos remain in `pajsk/face_db`.
+
+Face data is sensitive: use this feature only with the school's required
+authorization, limit access to the PAJSK service and its enrollment photos,
+and retain the checklist as an alternative attendance method.
+
+## Coach sessions and tasks
+
+Coaches can create a dated attendance session for one of their clubs, assign
+tasks specifically to that session, and mark attendance from its active-member
+roster. Existing sessions can be reopened to review or update saved marks and
+session tasks. Tasks created from the regular Tasks page remain club-wide;
+session tasks are additionally linked through `tasks.session_id`. Run
+`python seed.py` after updating the backend so existing databases receive this
+nullable column and its index.
 
 ## Bulk student import
 

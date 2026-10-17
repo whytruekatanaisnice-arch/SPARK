@@ -38,4 +38,4 @@ class AttendanceRecord(Base):
     student_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False, index=True)
     status: Mapped[AttendanceStatus] = mapped_column(Enum(AttendanceStatus, name="attendance_status"), nullable=False)
     note: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    marked_via: Mapped[str] = mapped_column(String(20), default="checklist", nullable=False)  # "qr" | "checklist"
+    marked_via: Mapped[str] = mapped_column(String(20), default="checklist", nullable=False)

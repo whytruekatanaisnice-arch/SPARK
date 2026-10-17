@@ -8,6 +8,7 @@ from app.schemas.common import ORMBase
 
 class TaskCreate(BaseModel):
     club_id: UUID
+    session_id: UUID | None = None
     title: str
     description: str | None = None
     due_date: datetime | None = None
@@ -16,6 +17,7 @@ class TaskCreate(BaseModel):
 class TaskOut(ORMBase):
     id: UUID
     club_id: UUID
+    session_id: UUID | None
     title: str
     description: str | None
     due_date: datetime | None

@@ -1,7 +1,8 @@
 from datetime import date
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas.common import ORMBase
 
@@ -13,13 +14,21 @@ class CreateSessionRequest(BaseModel):
 
 class AttendanceMark(BaseModel):
     student_id: UUID
-    status: str  # present | absent | excused | late
+    status: Literal["present", "absent", "excused", "late"]
     note: str | None = None
-    marked_via: str = "checklist"  # or "qr"
+    marked_via: str = "checklist"
 
 
 class BulkMarkRequest(BaseModel):
     records: list[AttendanceMark]
+
+
+class FaceRecognitionRequest(BaseModel):
+    image: str = Field(min_length=1, max_length=4_000_000)
+
+
+class FaceEnrollmentRequest(FaceRecognitionRequest):
+    ic_number: str = Field(min_length=12, max_length=20)
 
 
 class AttendanceSessionOut(ORMBase):

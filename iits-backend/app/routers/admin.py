@@ -2,15 +2,18 @@
 import csv
 import io
 import logging
+import re
 import secrets
 import uuid
 from datetime import date
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.config import settings
 from app.models.attendance import AttendanceRecord, AttendanceSession, AttendanceStatus
 from app.models.club import Club, ClubMembership
 from app.models.competition import InterClubCompetition
@@ -19,6 +22,7 @@ from app.models.user import CoachProfile, ParentStudentLink, StudentProfile, Use
 from app.schemas.common import Message
 from app.schemas.competition import CompetitionOut, CompetitionUpdate
 from app.schemas.report import DashboardStats, LeaderboardEntry
+from app.schemas.attendance import FaceEnrollmentRequest
 from app.schemas.user import BulkImportResult, UserCreate, UserListItem, UserUpdate
 from app.security import CurrentUser, hash_password, require_admin
 from app.utils.email import send_password_reset_email, send_welcome_email
@@ -27,6 +31,42 @@ from app.utils.pagination import paginate
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_admin)])
+
+
+async def _face_service_request(path: str, *, method: str = "GET", payload: dict | None = None) -> dict:
+    if not settings.PAJSK_FACE_SERVICE_URL or not settings.PAJSK_FACE_SERVICE_TOKEN:
+        raise HTTPException(status_code=503, detail="Face recognition service is not configured")
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            response = await client.request(
+                method,
+                f"{settings.PAJSK_FACE_SERVICE_URL.rstrip('/')}{path}",
+                json=payload,
+                headers={"Authorization": f"Bearer {settings.PAJSK_FACE_SERVICE_TOKEN}"},
+            )
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=504, detail="Face recognition service timed out") from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=503, detail="Face recognition service is unavailable") from exc
+    if response.status_code in (401, 403):
+        raise HTTPException(status_code=503, detail="Face recognition service token is not configured correctly")
+    if response.status_code >= 500:
+        raise HTTPException(status_code=503, detail="Face recognition service failed")
+    if response.status_code != 200:
+        if response.status_code in (400, 422):
+            try:
+                detail = response.json().get("message", "Face enrollment was rejected")
+            except ValueError:
+                detail = "Face enrollment was rejected"
+            raise HTTPException(status_code=response.status_code, detail=detail)
+        raise HTTPException(status_code=502, detail="Face recognition service rejected the request")
+    try:
+        result = response.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="Face recognition service returned an invalid response") from exc
+    if not isinstance(result, dict):
+        raise HTTPException(status_code=502, detail="Face recognition service returned an invalid response")
+    return result
 
 
 # ---------------- User management ----------------
@@ -192,6 +232,75 @@ async def bulk_import_students(file: UploadFile, db: AsyncSession = Depends(get_
             errors.append(f"{email}: account created but welcome email failed to send")
 
     return BulkImportResult(created=created, skipped=skipped, errors=errors)
+
+
+@router.get("/face-enrollments")
+async def list_face_enrollments(db: AsyncSession = Depends(get_db)):
+    """List active student accounts and whether an enrollment photo exists for the IC."""
+    service_result = await _face_service_request("/internal/students")
+    face_students = service_result.get("students")
+    if not isinstance(face_students, list):
+        raise HTTPException(status_code=502, detail="Face recognition service returned an invalid student list")
+    enrolled_ics = {
+        re.sub(r"\D", "", item["ic"])
+        for item in face_students
+        if isinstance(item, dict) and isinstance(item.get("ic"), str)
+    }
+    result = await db.execute(
+        select(User.id, User.full_name, StudentProfile.student_number, StudentProfile.ic_number)
+        .join(StudentProfile, StudentProfile.user_id == User.id)
+        .where(User.role == UserRole.STUDENT, User.is_active == True)  # noqa: E712
+        .order_by(User.full_name)
+    )
+    return [
+        {
+            "user_id": str(user_id),
+            "full_name": full_name,
+            "student_number": student_number,
+            "ic_number": ic_number,
+            "face_enrolled": bool(ic_number and re.sub(r"\D", "", ic_number) in enrolled_ics),
+        }
+        for user_id, full_name, student_number, ic_number in result.all()
+    ]
+
+
+@router.post("/users/{user_id}/face")
+async def enroll_student_face(
+    user_id: uuid.UUID,
+    payload: FaceEnrollmentRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Enroll or replace a student's face photo; this route is admin-only."""
+    student = await db.get(User, user_id)
+    if not student or student.role != UserRole.STUDENT:
+        raise HTTPException(status_code=404, detail="Student not found")
+    profile_result = await db.execute(
+        select(StudentProfile).where(StudentProfile.user_id == user_id)
+    )
+    profile = profile_result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Student profile not found")
+
+    ic_number = re.sub(r"\D", "", payload.ic_number)
+    if not re.fullmatch(r"\d{12}", ic_number):
+        raise HTTPException(status_code=400, detail="Student IC number must contain exactly 12 digits")
+    all_profiles = await db.execute(
+        select(StudentProfile.user_id, StudentProfile.ic_number).where(StudentProfile.ic_number.is_not(None))
+    )
+    for existing_user_id, existing_ic in all_profiles.all():
+        if existing_user_id != user_id and re.sub(r"\D", "", existing_ic or "") == ic_number:
+            raise HTTPException(status_code=409, detail="This IC number is already assigned to another student")
+
+    enrollment = await _face_service_request(
+        "/internal/enroll",
+        method="POST",
+        payload={"ic": ic_number, "name": student.full_name, "image": payload.image},
+    )
+    if enrollment.get("status") != "ok":
+        raise HTTPException(status_code=502, detail="Face recognition service did not confirm enrollment")
+    profile.ic_number = ic_number
+    await db.commit()
+    return {"detail": "Student face enrolled", "user_id": str(student.id), "ic_number": ic_number}
 
 
 # ---------------- Dashboard ----------------
