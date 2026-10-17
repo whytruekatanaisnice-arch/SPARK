@@ -1,20 +1,15 @@
-# Environment files and secrets
-env
-.env
-.env.*
-!.env.example
+# Local environment files and secrets
+**/.env
+**/.env.*
+!**/.env.example
 
-# Python
-__pycache__/
+# Python virtual environments
+**/venv*/
+**/.venv*/
+**/env/
+
+# Python-generated files
+**/__pycache__/
 *.py[cod]
 *$py.class
 .Python
-
-# Local tooling and generated files
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-htmlcov/
-.DS_Store
-Thumbs.db
