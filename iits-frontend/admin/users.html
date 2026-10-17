@@ -100,15 +100,15 @@
     <div class="field"><label for="face-ic">Student IC number</label><input type="text" id="face-ic" inputmode="numeric" maxlength="20" required placeholder="12-digit IC number"></div>
     <div class="card" style="text-align:center;">
       <video id="face-enrollment-camera" autoplay playsinline muted style="width:100%;max-width:480px;max-height:360px;object-fit:cover;border-radius:var(--radius-card);background:#111;"></video>
-      <canvas id="face-enrollment-capture" style="display:none;"></canvas>
-      <p class="muted" id="face-enrollment-status">Frame exactly one student, facing the camera, in good light.</p>
+      <canvas id="face-enrollment-capture" role="img" aria-label="Captured student face photo" style="display:none;width:100%;max-width:480px;max-height:360px;object-fit:contain;border-radius:var(--radius-card);"></canvas>
+      <p class="muted" id="face-enrollment-status" aria-live="polite">Frame exactly one student, facing the camera, in good light.</p>
       <div class="flex gap-8" style="justify-content:center;">
         <button type="button" class="btn btn-secondary" id="start-enrollment-camera">Start camera</button>
         <button type="button" class="btn btn-primary" id="save-student-face" disabled>Capture &amp; register</button>
         <button type="button" class="btn btn-ghost" id="stop-enrollment-camera" disabled>Stop camera</button>
       </div>
     </div>
-    <p class="hint">Registering an already-enrolled IC replaces its existing face photo.</p>
+    <p class="hint">One clear photo is enrolled; the pretrained recognizer does not train a new model. Registering an already-enrolled IC replaces its existing face photo.</p>
   </div>
 </div>
 
@@ -121,6 +121,8 @@ let allUsers = [];
 let faceEnrollments = {};
 let enrollmentStream = null;
 let enrollmentStudentId = null;
+let capturedFaceImage = null;
+let capturedFaceIc = null;
 
 function badgeForRole(role) {
   const map = { admin: "blue", coach: "green", student: "yellow", parent: "grey" };
@@ -168,31 +170,52 @@ async function openFaceEnrollment(userId) {
   document.getElementById("face-student-label").textContent = `${student.full_name} · ${student.student_number}`;
   document.getElementById("face-ic").value = student.ic_number || "";
   document.getElementById("face-enrollment-status").textContent = "Frame exactly one student, facing the camera, in good light.";
+  capturedFaceImage = null;
+  capturedFaceIc = null;
+  document.getElementById("face-enrollment-camera").style.display = "block";
+  document.getElementById("face-enrollment-capture").style.display = "none";
+  document.getElementById("save-student-face").textContent = "Capture & register";
+  document.getElementById("save-student-face").disabled = true;
   document.getElementById("face-modal").classList.add("open");
 }
 
 function closeFaceEnrollment() {
   stopEnrollmentCamera();
+  capturedFaceImage = null;
+  capturedFaceIc = null;
   enrollmentStudentId = null;
+  document.getElementById("face-enrollment-camera").style.display = "block";
+  document.getElementById("face-enrollment-capture").style.display = "none";
+  document.getElementById("save-student-face").textContent = "Capture & register";
   document.getElementById("face-modal").classList.remove("open");
 }
 
 async function startEnrollmentCamera() {
   if (enrollmentStream) return;
+  const startButton = document.getElementById("start-enrollment-camera");
+  startButton.disabled = true;
   try {
     enrollmentStream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: { ideal: "user" }, width: { ideal: 640 }, height: { ideal: 480 } },
       audio: false,
     });
+    capturedFaceImage = null;
+    capturedFaceIc = null;
     const video = document.getElementById("face-enrollment-camera");
+    document.getElementById("face-enrollment-capture").style.display = "none";
+    video.style.display = "block";
     video.srcObject = enrollmentStream;
     await video.play();
+    document.getElementById("save-student-face").textContent = "Capture & register";
     document.getElementById("save-student-face").disabled = false;
     document.getElementById("stop-enrollment-camera").disabled = false;
+    document.getElementById("face-enrollment-status").textContent = "Frame exactly one student, facing the camera, in good light.";
   } catch (e) {
-    enrollmentStream = null;
+    stopEnrollmentCamera();
     document.getElementById("face-enrollment-status").textContent = `Camera unavailable: ${e.message}`;
     IITS.toast("Allow camera access and use localhost or HTTPS", "error");
+  } finally {
+    startButton.disabled = false;
   }
 }
 
@@ -200,42 +223,68 @@ function stopEnrollmentCamera() {
   if (enrollmentStream) enrollmentStream.getTracks().forEach(track => track.stop());
   enrollmentStream = null;
   document.getElementById("face-enrollment-camera").srcObject = null;
-  document.getElementById("save-student-face").disabled = true;
+  document.getElementById("start-enrollment-camera").disabled = false;
+  document.getElementById("save-student-face").disabled = !capturedFaceImage;
   document.getElementById("stop-enrollment-camera").disabled = true;
 }
 
 async function saveStudentFace() {
   const video = document.getElementById("face-enrollment-camera");
   const icNumber = document.getElementById("face-ic").value.trim();
-  if (!enrollmentStudentId || !enrollmentStream) return;
-  if (!/^\d{12}$/.test(icNumber.replace(/[\s-]/g, ""))) {
+  const normalizedIc = icNumber.replace(/[\s-]/g, "");
+  if (!enrollmentStudentId) return;
+  if (!/^\d{12}$/.test(normalizedIc)) {
     IITS.toast("Enter a valid 12-digit student IC number", "error");
     return;
   }
-  if (!video.videoWidth || !video.videoHeight) {
-    IITS.toast("Wait for the camera image, then try again", "error");
+  const canvas = document.getElementById("face-enrollment-capture");
+  if (capturedFaceImage && capturedFaceIc !== normalizedIc) {
+    capturedFaceImage = null;
+    capturedFaceIc = null;
+    canvas.style.display = "none";
+    video.style.display = "block";
+    document.getElementById("face-enrollment-status").textContent =
+      "The IC number changed. Start the camera and capture a new photo for this student.";
+    document.getElementById("save-student-face").disabled = true;
+    IITS.toast("The IC number changed. Capture a new photo before registering.", "error");
     return;
   }
-  const canvas = document.getElementById("face-enrollment-capture");
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+  if (!capturedFaceImage) {
+    if (!enrollmentStream) return;
+    if (!video.videoWidth || !video.videoHeight) {
+      IITS.toast("Wait for the camera image, then try again", "error");
+      return;
+    }
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+    capturedFaceImage = canvas.toDataURL("image/jpeg", 0.82);
+    capturedFaceIc = normalizedIc;
+    stopEnrollmentCamera();
+    video.style.display = "none";
+    canvas.style.display = "block";
+  }
   const button = document.getElementById("save-student-face");
+  const startButton = document.getElementById("start-enrollment-camera");
   button.disabled = true;
-  document.getElementById("face-enrollment-status").textContent = "Validating and saving the face photo…";
+  startButton.disabled = true;
+  button.textContent = "Processing…";
+  document.getElementById("face-enrollment-status").textContent = "Camera stopped. Validating and saving the captured photo…";
   try {
     await IITS.api(`/api/admin/users/${enrollmentStudentId}/face`, {
       method: "POST",
-      body: { ic_number: icNumber, image: canvas.toDataURL("image/jpeg", 0.82) },
+      body: { ic_number: capturedFaceIc, image: capturedFaceImage },
     });
     IITS.toast("Student face registered", "success");
     await loadFaceEnrollments();
     closeFaceEnrollment();
   } catch (e) {
-    document.getElementById("face-enrollment-status").textContent = e.message;
+    document.getElementById("face-enrollment-status").textContent =
+      `${e.message} The camera is off. Retry this photo or start the camera to retake it.`;
+    button.textContent = "Retry registration";
     IITS.toast(e.message, "error");
-  } finally {
-    button.disabled = !enrollmentStream;
+    button.disabled = false;
+    startButton.disabled = false;
   }
 }
 

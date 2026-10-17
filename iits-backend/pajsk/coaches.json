@@ -1,0 +1,10 @@
+{
+  "admin": {
+    "hash": "scrypt:32768:8:1$FNmbBuuCxYMfht7I$fd45c357f39492032b5134e44dda226487ca4d5d226866f346a71d6eec702101dc0d0e615311811ba1fc6cbfc31a02f8f2225db98829c3a146b8379ad0499a78",
+    "role": "admin"
+  },
+  "coach1": {
+    "hash": "scrypt:32768:8:1$qbCBGQCnWkvZvMGD$75e0480204e0ccd344919e553198d2ac409f1180531113c3c5f3c436dcf26a8a6e98e5dc948d9885f339883e06589765871164cdaced88b79105d82cecc2a25d",
+    "role": "coach"
+  }
+}
