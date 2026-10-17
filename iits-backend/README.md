@@ -27,14 +27,48 @@ and connecting it to the static frontend in [`../iits-frontend/`](../iits-fronte
 
 ## Requirements
 
-- Python 3.11 or later
+- Python 3.12
 - A Supabase project with a PostgreSQL database
 - Git, if you are cloning the repository
 
-Install Python from [python.org](https://www.python.org/downloads/) if it is
-not already available. On Windows, select the Python Launcher option during
-installation so `py -3` is available. Confirm the installed version with
-`py -3 --version` on Windows or `python3 --version` on macOS.
+### Install Python 3.12
+
+Install Python 3.12 before creating the virtual environment. Choose the latest
+available Python 3.12.x patch release.
+
+**Windows:**
+
+- **Recommended:** Download the Windows installer from
+  [python.org/downloads/windows](https://www.python.org/downloads/windows/).
+  Choose a Python 3.12.x release and run the 64-bit Windows installer. Enable
+  the Python Launcher option if offered.
+- Or, if [Windows Package Manager (`winget`)](https://learn.microsoft.com/windows/package-manager/winget/)
+  is installed, run this in PowerShell:
+
+  ```powershell
+  winget install --id Python.Python.3.12 -e
+  ```
+
+After installation, close and reopen the terminal, then verify:
+
+```powershell
+py -3.12 --version
+```
+
+It should report `Python 3.12.x`. If it reports that no suitable runtime was
+found, Python 3.12 is not installed or the Python Launcher cannot find it.
+
+**macOS:**
+
+Download the macOS installer for a Python 3.12.x release from
+[python.org/downloads/macos](https://www.python.org/downloads/macos/), install
+it, open a new Terminal window, and verify:
+
+```bash
+python3.12 --version
+```
+
+It should report `Python 3.12.x`.
 
 For backend-only work, the frontend is not required. To sign in through the
 browser, run the frontend as described in
@@ -53,10 +87,9 @@ iits-backend/
 │   ├── schemas/         # Pydantic request/response schemas
 │   ├── routers/         # API endpoints
 │   └── utils/           # PAJSK, email, and shared helpers
-├── migrations/          # Migration-related project files
 ├── requirements.txt
 ├── .env.example
-├── seed.py              # Creates database tables and demo data
+├── seed.py              # Sets up/migrates the schema and creates demo data
 └── sample_students.csv  # Example bulk-import CSV
 ```
 
@@ -97,12 +130,16 @@ file from the example.
 
 ```powershell
 cd .\iits-backend
-py -3 -m venv .venv
+py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
+python --version
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 Copy-Item .env.example .env
 ```
+
+Confirm `python --version` prints `Python 3.12.x` after activating the
+environment.
 
 If PowerShell blocks virtual-environment activation, either use **Command
 Prompt** commands below or allow script activation for the current PowerShell
@@ -117,8 +154,9 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 
 ```bat
 cd iits-backend
-py -3 -m venv .venv
+py -3.12 -m venv .venv
 .\.venv\Scripts\activate.bat
+python --version
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 copy .env.example .env
@@ -128,12 +166,16 @@ copy .env.example .env
 
 ```bash
 cd iits-backend
-python3 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
+python --version
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 cp .env.example .env
 ```
+
+Confirm `python --version` prints `Python 3.12.x` after activating the
+environment.
 
 Edit `iits-backend/.env` and set at least:
 
@@ -161,19 +203,24 @@ With the virtual environment activated and the working directory set to
 python seed.py
 ```
 
-The script creates the tables using SQLAlchemy `create_all` and inserts demo
-users, a Robotics Club, a sample membership and schedule, role types,
+The script creates every registered application table, applies the
+absence-certificate compatibility changes for the legacy schema, and inserts
+demo users, a Robotics Club, a sample membership and schedule, role types,
 achievement ranks, and PAJSK defaults for 2026 (the year currently set in
-`seed.py`). If the demo admin already exists, the script reports that seed data
-exists and skips inserting it again.
+`seed.py`). Run this same command again after pulling backend changes that add
+tables or certificate fields. It does not delete existing rows. If the demo
+admin already exists, the schema setup still runs, but demo-data insertion is
+skipped.
 
 > **Development data only:** Demo users have known passwords. Do not seed
 > these accounts into a production environment.
 
 The project does not currently use Alembic migrations for schema changes.
-`create_all` is suitable for initial local setup, but it does not manage
-ongoing schema evolution; use a reviewed migration process before production
-use.
+`create_all` creates missing tables but does not automatically migrate arbitrary
+schema changes. `seed.py` includes the additive compatibility migration needed
+for the known legacy absence-certificate table. Back up existing databases
+before running setup, and use a reviewed migration process for future
+production schema changes.
 
 ## Run the backend
 

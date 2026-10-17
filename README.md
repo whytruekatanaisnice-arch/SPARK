@@ -46,7 +46,7 @@ run these commands in a terminal:
 
 ```powershell
 cd .\iits-backend
-py -3 -m venv .venv
+py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 Copy-Item .env.example .env
@@ -59,7 +59,7 @@ python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 ```bash
 cd iits-backend
-python3 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 cp .env.example .env

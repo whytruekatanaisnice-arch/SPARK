@@ -1,15 +1,18 @@
 """
-Seed script: creates demo accounts (admin, coach, student, parent), a sample
-club, PAJSK config defaults, role types, and achievement ranks.
+Database setup and seed script: creates all application tables, aligns the
+legacy absence-certificate schema, and inserts demo accounts (admin, coach,
+student, parent), a sample club, PAJSK config defaults, role types, and
+achievement ranks.
 
 Run with:  python seed.py
 """
 import asyncio
 from datetime import time
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.database import AsyncSessionLocal, engine, Base
+import app.models  # noqa: F401 — register every ORM model with Base.metadata
 from app.models.achievement import AchievementRank
 from app.models.club import Club, ClubMembership, ClubSchedule, WeekDay
 from app.models.pajsk import PajskConfig
@@ -50,10 +53,164 @@ PAJSK_CONFIG_DEFAULTS = [
 ]
 
 
-async def main() -> None:
-    # Create tables (fine for a demo; use Alembic migrations in production instead).
+async def setup_database() -> None:
+    """Create all tables and migrate legacy absence-certificate tables."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+        await conn.execute(text("""
+            DO $$
+            BEGIN
+                CREATE TYPE public.certificate_status AS ENUM ('pending', 'approved', 'rejected');
+            EXCEPTION
+                WHEN duplicate_object THEN NULL;
+            END
+            $$
+        """))
+
+        await conn.execute(text("""
+            ALTER TABLE public.absence_certificates
+                ADD COLUMN IF NOT EXISTS submitted_by uuid,
+                ADD COLUMN IF NOT EXISTS attendance_record_id uuid,
+                ADD COLUMN IF NOT EXISTS reason text,
+                ADD COLUMN IF NOT EXISTS file_url varchar(500)
+        """))
+
+        await conn.execute(text("""
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'absence_certificates'
+                      AND column_name = 'uploaded_by'
+                ) THEN
+                    EXECUTE '
+                        UPDATE public.absence_certificates
+                        SET submitted_by = uploaded_by
+                        WHERE submitted_by IS NULL
+                    ';
+                END IF;
+
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'absence_certificates'
+                      AND column_name = 'description'
+                ) THEN
+                    EXECUTE '
+                        UPDATE public.absence_certificates
+                        SET reason = COALESCE(NULLIF(description, ''''), ''Legacy certificate submission'')
+                        WHERE reason IS NULL
+                    ';
+                END IF;
+
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'absence_certificates'
+                      AND column_name = 'file_path'
+                ) THEN
+                    EXECUTE '
+                        UPDATE public.absence_certificates
+                        SET file_url = file_path
+                        WHERE file_url IS NULL
+                    ';
+                END IF;
+
+                UPDATE public.absence_certificates
+                SET reason = 'Legacy certificate submission'
+                WHERE reason IS NULL;
+            END
+            $$
+        """))
+
+        await conn.execute(text("""
+            ALTER TABLE public.absence_certificates
+                ALTER COLUMN submitted_by SET NOT NULL,
+                ALTER COLUMN reason SET NOT NULL,
+                ALTER COLUMN status DROP DEFAULT
+        """))
+
+        await conn.execute(text("""
+            DO $$
+            DECLARE
+                status_type text;
+            BEGIN
+                SELECT udt_name
+                INTO status_type
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'absence_certificates'
+                  AND column_name = 'status';
+
+                IF status_type <> 'certificate_status' THEN
+                    ALTER TABLE public.absence_certificates
+                        ALTER COLUMN status TYPE public.certificate_status
+                        USING status::text::public.certificate_status;
+                END IF;
+
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'absence_certificates'
+                      AND column_name = 'uploaded_by'
+                ) THEN
+                    ALTER TABLE public.absence_certificates
+                        ALTER COLUMN uploaded_by DROP NOT NULL;
+                END IF;
+
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'absence_certificates'
+                      AND column_name = 'absence_date'
+                ) THEN
+                    ALTER TABLE public.absence_certificates
+                        ALTER COLUMN absence_date DROP NOT NULL;
+                END IF;
+
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'absence_certificates'
+                      AND column_name = 'file_path'
+                ) THEN
+                    ALTER TABLE public.absence_certificates
+                        ALTER COLUMN file_path DROP NOT NULL;
+                END IF;
+
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM pg_constraint
+                    WHERE conname = 'absence_certificates_attendance_record_id_fkey'
+                      AND conrelid = 'public.absence_certificates'::regclass
+                ) THEN
+                    ALTER TABLE public.absence_certificates
+                        ADD CONSTRAINT absence_certificates_attendance_record_id_fkey
+                        FOREIGN KEY (attendance_record_id)
+                        REFERENCES public.attendance_records(id);
+                END IF;
+            END
+            $$
+        """))
+
+        await conn.execute(text("""
+            ALTER TABLE public.absence_certificates
+                ALTER COLUMN status SET DEFAULT 'pending'::public.certificate_status
+        """))
+        await conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS ix_absence_certificates_student_id
+                ON public.absence_certificates (student_id)
+        """))
+        await conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS ix_absence_certificates_status
+                ON public.absence_certificates (status)
+        """))
+
+
+async def main() -> None:
+    await setup_database()
 
     async with AsyncSessionLocal() as db:
         existing = await db.execute(select(User).where(User.email == DEMO_ACCOUNTS["admin"]["email"]))
