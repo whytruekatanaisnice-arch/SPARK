@@ -9,7 +9,7 @@
 <body data-role="coach" data-active="students" data-title="Students">
 <div id="page-root">
 
-  <div class="page-head"><div><h1>Student progress notes</h1><p>Log progress, behaviour, and skills. Notes autosave every 10 seconds while you type.</p></div></div>
+  <div class="page-head"><div><h1>Student progress notes</h1><p>Log progress, behaviour, and skills. Notes save shortly after you type and restore after a refresh if unsaved.</p></div></div>
 
   <div class="field" style="max-width:280px;"><label for="club-select">Club</label><select id="club-select"></select></div>
 
@@ -47,6 +47,10 @@ function mountStudent(student) {
     fields: [noteEl, catEl],
     anchor: noteEl,
     sendAll: true,
+    getRecoveryMetadata: () => ({ noteId }),
+    restoreRecoveryMetadata: metadata => {
+      if (typeof metadata.noteId === "string") noteId = metadata.noteId;
+    },
     save: async (p) => {
       const body = { category: p[catEl.id], note: p[noteEl.id] };
       if (!body.note || !body.note.trim()) return;           // nothing worth saving yet

@@ -20,7 +20,8 @@ class Settings(BaseSettings):
     # --- Supabase (for Storage) ---
     SUPABASE_URL: str
     SUPABASE_SERVICE_ROLE_KEY: str
-    SUPABASE_STORAGE_BUCKET: str = "submissions"
+    SUPABASE_STORAGE_BUCKET: str = "submission"
+    SUPABASE_ABSENCE_CERTIFICATES_BUCKET: str = "absence-certificates"
 
     # --- Optional PAJSK FaceNet512 recognition service ---
     PAJSK_FACE_SERVICE_URL: str | None = None

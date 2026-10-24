@@ -186,6 +186,8 @@ async def recognize_session_student(
 
     if not isinstance(match, dict):
         raise HTTPException(status_code=502, detail="Face recognition service returned an invalid response")
+    if match.get("status") == "not_detected":
+        return {"status": "not_detected"}
     if match.get("status") == "unknown":
         return {"status": "unknown"}
     if match.get("status") != "found" or not isinstance(match.get("ic"), str):

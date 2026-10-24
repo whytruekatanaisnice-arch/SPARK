@@ -6,26 +6,15 @@
   <title>PAJSK Certificate Review · SPARK Coach</title>
   <link rel="stylesheet" href="/shared/css/styles.css">
 </head>
-<body data-role="coach" data-active="certificate-review" data-title="PAJSK Certificate Review" data-certificate-workflow="review">
+<body data-role="coach" data-active="achievements" data-title="PAJSK Certificate Review">
 <div id="page-root">
   <div class="page-head">
-    <div><h1>PAJSK certificate review</h1><p>Verify the certificate and entered details before approving points.</p></div>
+    <div><h1>Admin-only certificate review</h1><p>Student and parent achievement certificate submissions can only be reviewed by an admin. Their status is available on the submitter's Achievement Uploads page.</p></div>
   </div>
-  <div class="field" style="max-width:280px;">
-    <label for="review-status">Show submissions</label>
-    <select id="review-status">
-      <option value="pending">Awaiting review</option>
-      <option value="approved">Approved</option>
-      <option value="rejected">Rejected</option>
-      <option value="">All submissions</option>
-    </select>
-  </div>
-  <div id="review-list"><div class="loading-row"><span class="spinner"></span> Loading submissions…</div></div>
 </div>
 <script src="/shared/js/config.js"></script>
 <script src="/shared/js/toast.js"></script>
 <script src="/shared/js/api.js"></script>
 <script src="/shared/js/shell.js"></script>
-<script src="/shared/js/achievement-certificates.js"></script>
 </body>
 </html>

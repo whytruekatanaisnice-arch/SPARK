@@ -27,9 +27,9 @@
       <div class="field"><label>Audience</label>
         <div class="checkbox-row" style="margin-bottom:6px;"><input type="checkbox" id="role-all" checked> <label for="role-all" style="margin:0;font-weight:500;">Everyone</label></div>
         <div id="role-checks" style="display:none;gap:16px;">
-          <span class="checkbox-row"><input type="checkbox" class="role-box" value="student"> Students</span>
-          <span class="checkbox-row"><input type="checkbox" class="role-box" value="parent"> Parents</span>
-          <span class="checkbox-row"><input type="checkbox" class="role-box" value="coach"> Coaches</span>
+          <span class="checkbox-row"><input type="checkbox" id="role-student" class="role-box" value="student"> Students</span>
+          <span class="checkbox-row"><input type="checkbox" id="role-parent" class="role-box" value="parent"> Parents</span>
+          <span class="checkbox-row"><input type="checkbox" id="role-coach" class="role-box" value="coach"> Coaches</span>
         </div>
       </div>
       <div class="flex gap-8" style="justify-content:flex-end;">
@@ -105,9 +105,18 @@ function editAnn(id) {
 
   openModal();
   modalAuto = IITS.autosave({
-    fields: ["#title", "#body"], anchor: "#body",
-    save: async (p) => { await IITS.api(`/api/admin/announcements/${a.id}`, { method: "PATCH", body: p }); didAuto = true; },
+    fields: ["#title", "#body", "#role-all", "#role-student", "#role-parent", "#role-coach"], anchor: "#body",
+    save: async (p) => {
+      if (["role-all", "role-student", "role-parent", "role-coach"].some(key => key in p)) {
+        const targetRoles = [...document.querySelectorAll(".role-box:checked")].map(box => box.value);
+        p.target_roles = document.getElementById("role-all").checked || !targetRoles.length ? null : targetRoles;
+        ["role-all", "role-student", "role-parent", "role-coach"].forEach(key => delete p[key]);
+      }
+      await IITS.api(`/api/admin/announcements/${a.id}`, { method: "PATCH", body: p });
+      didAuto = true;
+    },
   });
+  document.getElementById("role-checks").style.display = document.getElementById("role-all").checked ? "none" : "flex";
 }
 
 function openModal() { document.getElementById("ann-modal").classList.add("open"); }

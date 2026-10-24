@@ -38,6 +38,18 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="duplicate-venue-modal">
+  <div class="modal">
+    <div class="modal-head"><h2>Venue name already exists</h2></div>
+    <p id="duplicate-venue-message"></p>
+    <p class="hint">Do you want to save another venue with this name?</p>
+    <div class="flex gap-8" style="justify-content:flex-end;">
+      <button type="button" class="btn btn-secondary" id="discard-duplicate-venue">No, discard</button>
+      <button type="button" class="btn btn-primary" id="save-duplicate-venue">Yes, save anyway</button>
+    </div>
+  </div>
+</div>
+
 <script src="/shared/js/config.js"></script>
 <script src="/shared/js/toast.js"></script>
 <script src="/shared/js/api.js"></script>
@@ -45,6 +57,7 @@
 <script>
 let venuesCache = [];
 let modalAuto = null, modalDraft = null, didAuto = false;
+let pendingDuplicateVenue = null;
 function stopModalHelpers() {
   if (modalAuto) { modalAuto.stop(); modalAuto = null; }
   if (modalDraft) { modalDraft.stop(); modalDraft = null; }
@@ -102,11 +115,33 @@ function closeModal() {
   if (reload) loadVenues();
 }
 
+async function saveNewVenue(payload) {
+  try {
+    await IITS.api("/api/admin/venues", { method: "POST", body: payload });
+    IITS.toast("Venue created", "success");
+    if (modalDraft) { modalDraft.clear(); modalDraft = null; }
+    closeModal();
+    loadVenues();
+  } catch (err) { IITS.toast(err.message, "error"); }
+}
+
 document.addEventListener("iits:shell-ready", () => {
   loadVenues();
   document.getElementById("new-venue-btn").addEventListener("click", () => { closeModal(); openModal(); modalDraft = IITS.draft.start("#venue-form", "venue-new"); });
   document.getElementById("modal-close").addEventListener("click", closeModal);
   document.getElementById("cancel-btn").addEventListener("click", closeModal);
+  document.getElementById("discard-duplicate-venue").addEventListener("click", () => {
+    pendingDuplicateVenue = null;
+    document.getElementById("duplicate-venue-modal").classList.remove("open");
+    if (modalDraft) { modalDraft.clear(); modalDraft = null; }
+    closeModal();
+  });
+  document.getElementById("save-duplicate-venue").addEventListener("click", async () => {
+    const payload = pendingDuplicateVenue;
+    pendingDuplicateVenue = null;
+    document.getElementById("duplicate-venue-modal").classList.remove("open");
+    if (payload) await saveNewVenue(payload);
+  });
   document.getElementById("venue-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const id = document.getElementById("venue-id").value;
@@ -120,9 +155,19 @@ document.addEventListener("iits:shell-ready", () => {
         await IITS.api(`/api/admin/venues/${id}`, { method: "PATCH", body: payload });
         IITS.toast("Venue updated", "success");
       } else {
-        await IITS.api("/api/admin/venues", { method: "POST", body: payload });
-        IITS.toast("Venue created", "success");
-        if (modalDraft) { modalDraft.clear(); modalDraft = null; }
+        venuesCache = await IITS.api("/api/admin/venues");
+        const duplicate = venuesCache.find(venue =>
+          venue.name.trim().toLocaleLowerCase() === payload.name.toLocaleLowerCase()
+        );
+        if (duplicate) {
+          pendingDuplicateVenue = payload;
+          document.getElementById("duplicate-venue-message").textContent =
+            `A venue named "${duplicate.name}" already exists.`;
+          document.getElementById("duplicate-venue-modal").classList.add("open");
+          return;
+        }
+        await saveNewVenue(payload);
+        return;
       }
       closeModal();
       loadVenues();

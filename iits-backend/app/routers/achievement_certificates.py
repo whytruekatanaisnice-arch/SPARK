@@ -24,7 +24,7 @@ from app.schemas.achievement_certificate import (
     CertificateSubmissionOut,
     CertificateSubmit,
 )
-from app.security import CurrentUser, require_any, require_coach, require_parent, require_student
+from app.security import CurrentUser, require_admin, require_any, require_parent, require_student
 from app.utils.email import send_email
 from app.utils.certificate_ocr_extraction import extract_certificate_fields
 from app.utils.pajsk_certificate_scoring import calculate_certificate_score
@@ -42,9 +42,9 @@ parent_router = APIRouter(
     dependencies=[Depends(require_parent)],
 )
 review_router = APIRouter(
-    prefix="/api/coach/certificate-submissions",
-    tags=["coach:certificate-submissions"],
-    dependencies=[Depends(require_coach)],
+    prefix="/api/admin/achievement-certificates",
+    tags=["admin:achievement-certificates"],
+    dependencies=[Depends(require_admin)],
 )
 scoring_router = APIRouter(
     prefix="/api/achievement-certificate-scoring",
@@ -353,7 +353,7 @@ async def _queue_reviewer_notifications(
 ) -> list[User]:
     staff_result = await db.execute(
         select(User).where(
-            User.role.in_((UserRole.ADMIN, UserRole.COACH)),
+            User.role == UserRole.ADMIN,
             User.is_active.is_(True),
         )
     )
@@ -371,7 +371,7 @@ async def _queue_reviewer_notifications(
 async def _email_reviewers(staff: list[User], student: User, event_name: str) -> None:
     message = (
         f"{student.full_name} submitted the competition certificate for {event_name}. "
-        f"Sign in to review the OCR fields and certificate: {settings.APP_LOGIN_URL}"
+        f"An admin can review the OCR fields and certificate: {settings.APP_LOGIN_URL}"
     )
     for reviewer in staff:
         if not await send_email(reviewer.email, "PAJSK certificate requires review", message):

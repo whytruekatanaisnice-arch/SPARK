@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.club import Club, ClubSchedule, Venue
+from app.models.user import User, UserRole
 from app.schemas.club import (
     AssignVenueRequest, ClubCreate, ClubOut, ClubUpdate, VenueCreate, VenueOut,
 )
@@ -36,8 +37,86 @@ async def get_club(club_id: uuid.UUID, current_user: CurrentUser, db: AsyncSessi
 admin_router = APIRouter(prefix="/api/admin", tags=["admin:clubs"], dependencies=[Depends(require_admin)])
 
 
+def _category_key(category: str | None) -> str:
+    normalized = " ".join((category or "").casefold().split())
+    aliases = {
+        "club & society": "club & society",
+        "club and society": "club & society",
+        "sports": "sports & games",
+        "sports & games": "sports & games",
+        "sports and games": "sports & games",
+    }
+    return aliases.get(normalized, normalized)
+
+
+async def _validate_coach_assignment(
+    db: AsyncSession,
+    coach_id: uuid.UUID | None,
+    category: str | None,
+    *,
+    club_id: uuid.UUID | None = None,
+    is_active: bool = True,
+) -> None:
+    if coach_id is None:
+        return
+
+    result = await db.execute(select(User).where(User.id == coach_id).with_for_update())
+    coach = result.scalar_one_or_none()
+    if coach is None or coach.role != UserRole.COACH:
+        raise HTTPException(status_code=422, detail="Assigned user must have the coach role")
+    if not is_active:
+        return
+
+    result = await db.execute(
+        select(Club).where(Club.coach_id == coach_id, Club.is_active.is_(True))
+    )
+    conflicting_clubs = [
+        club for club in result.scalars().all()
+        if club.id != club_id and _category_key(club.category) == _category_key(category)
+    ]
+    if conflicting_clubs:
+        raise HTTPException(
+            status_code=409,
+            detail=f"This coach already manages an active {_category_key(category) or 'club'}",
+        )
+
+
+async def _validate_venue_assignment(
+    db: AsyncSession,
+    venue_id: uuid.UUID | None,
+    category: str | None,
+    *,
+    club_id: uuid.UUID | None = None,
+    is_active: bool = True,
+) -> None:
+    if venue_id is None:
+        return
+
+    result = await db.execute(select(Venue).where(Venue.id == venue_id).with_for_update())
+    if result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Venue not found")
+    if not is_active:
+        return
+
+    result = await db.execute(
+        select(Club).where(Club.venue_id == venue_id, Club.is_active.is_(True))
+    )
+    conflicting_clubs = [
+        club for club in result.scalars().all()
+        if club.id != club_id and _category_key(club.category) == _category_key(category)
+    ]
+    if conflicting_clubs:
+        raise HTTPException(
+            status_code=409,
+            detail="This venue is already assigned to another active club of the same category",
+        )
+
+
 @admin_router.post("/clubs", response_model=ClubOut, status_code=status.HTTP_201_CREATED)
 async def create_club(payload: ClubCreate, db: AsyncSession = Depends(get_db)):
+    await _validate_coach_assignment(db, payload.coach_id, payload.category)
+    await _validate_venue_assignment(db, payload.venue_id, payload.category)
+
     club = Club(
         name=payload.name,
         category=payload.category,
@@ -62,7 +141,30 @@ async def update_club(club_id: uuid.UUID, payload: ClubUpdate, db: AsyncSession 
     if not club:
         raise HTTPException(status_code=404, detail="Club not found")
 
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    updates = payload.model_dump(exclude_unset=True)
+    coach_id = updates.get("coach_id", club.coach_id)
+    category = updates.get("category", club.category)
+    is_active = updates.get("is_active", club.is_active)
+    venue_id = updates.get("venue_id", club.venue_id)
+
+    if (
+        coach_id != club.coach_id
+        or _category_key(category) != _category_key(club.category)
+        or is_active != club.is_active
+    ):
+        await _validate_coach_assignment(
+            db, coach_id, category, club_id=club.id, is_active=is_active
+        )
+    if (
+        venue_id != club.venue_id
+        or _category_key(category) != _category_key(club.category)
+        or is_active != club.is_active
+    ):
+        await _validate_venue_assignment(
+            db, venue_id, category, club_id=club.id, is_active=is_active
+        )
+
+    for field, value in updates.items():
         setattr(club, field, value)
 
     await db.commit()
@@ -89,6 +191,10 @@ async def assign_venue(club_id: uuid.UUID, payload: AssignVenueRequest, db: Asyn
     if not venue:
         raise HTTPException(status_code=404, detail="Venue not found")
 
+    if venue.id != club.venue_id:
+        await _validate_venue_assignment(
+            db, venue.id, club.category, club_id=club.id, is_active=club.is_active
+        )
     club.venue_id = venue.id
     await db.commit()
     await db.refresh(club)

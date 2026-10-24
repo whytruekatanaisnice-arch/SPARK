@@ -33,6 +33,7 @@
 <script src="/shared/js/shell.js"></script>
 <script>
 let tasksCache = [];
+let submissionDraft = null;
 
 async function loadTasks() {
   const list = document.getElementById("tasks-list");
@@ -54,11 +55,17 @@ async function loadTasks() {
 }
 
 function openSubmit(taskId, title) {
+  if (submissionDraft) submissionDraft.stop();
   document.getElementById("submit-task-id").value = taskId;
   document.getElementById("submit-task-title").textContent = `Submit: ${title}`;
   document.getElementById("submit-modal").classList.add("open");
+  submissionDraft = IITS.draft.start("#submit-form", `student-task-submission:${taskId}`);
 }
-function closeSubmit() { document.getElementById("submit-modal").classList.remove("open"); document.getElementById("submit-form").reset(); }
+function closeSubmit() {
+  if (submissionDraft) { submissionDraft.stop(); submissionDraft = null; }
+  document.getElementById("submit-modal").classList.remove("open");
+  document.getElementById("submit-form").reset();
+}
 
 document.addEventListener("iits:shell-ready", () => {
   loadTasks();
@@ -80,6 +87,7 @@ document.addEventListener("iits:shell-ready", () => {
       }
       await IITS.api("/api/student/submissions", { method: "POST", body: { task_id: taskId, text_content: text || null, file_url } });
       IITS.toast("Submitted! Your coach will review it soon.", "success");
+      if (submissionDraft) { submissionDraft.clear(); submissionDraft = null; }
       closeSubmit();
     } catch (err) { IITS.toast(err.message, "error"); }
   });

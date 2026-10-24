@@ -86,7 +86,7 @@ document.addEventListener("iits:shell-ready", async () => {
     try {
       const fd = new FormData();
       fd.append("file", document.getElementById("file").files[0]);
-      const up = await IITS.api("/api/uploads", { method: "POST", body: fd, isForm: true });
+      const up = await IITS.api("/api/uploads/absence-certificates", { method: "POST", body: fd, isForm: true });
       await IITS.api(`/api/parent/children/${childId()}/certificates`, { method: "POST", body: {
         reason: document.getElementById("reason").value.trim(),
         file_url: up.file_url,

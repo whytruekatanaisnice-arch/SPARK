@@ -111,6 +111,9 @@ let currentClubId = null;
 let faceStream = null;
 let faceScanRunning = false;
 let faceScanInProgress = false;
+let restoredAttendanceDraft = false;
+let sessionTaskDraft = null;
+let reasonDraft = null;
 
 const STATUSES = [
   { key: "present", label: "Present" },
@@ -118,6 +121,77 @@ const STATUSES = [
   { key: "excused", label: "Excused" },
   { key: "absent", label: "Absent" },
 ];
+
+function attendanceStorageKey(kind, sessionId = "") {
+  const user = IITS.getUser();
+  if (!user?.id) return null;
+  return `iits_attendance_${kind}:${user.id}${sessionId ? `:${sessionId}` : ""}`;
+}
+
+function saveAttendanceSelection(clubId, sessionId = "") {
+  const key = attendanceStorageKey("selection");
+  if (!key) return;
+  try {
+    localStorage.setItem(key, JSON.stringify({ clubId, sessionId }));
+  } catch (error) {
+    IITS.toast(`Could not save the attendance session selection: ${error.message}`, "error");
+  }
+}
+
+function getAttendanceSelection() {
+  const key = attendanceStorageKey("selection");
+  if (!key) return null;
+  try {
+    return JSON.parse(localStorage.getItem(key) || "null");
+  } catch (error) {
+    IITS.toast(`Could not restore the attendance session selection: ${error.message}`, "error");
+    return null;
+  }
+}
+
+function saveAttendanceDraft() {
+  if (!currentSessionId) return;
+  const key = attendanceStorageKey("draft", currentSessionId);
+  if (!key) return;
+  try {
+    localStorage.setItem(key, JSON.stringify(marks));
+  } catch (error) {
+    IITS.toast(`Could not save attendance recovery data: ${error.message}`, "error");
+  }
+}
+
+function clearAttendanceDraft(sessionId) {
+  const key = attendanceStorageKey("draft", sessionId);
+  if (!key) return;
+  try {
+    localStorage.removeItem(key);
+  } catch (error) {
+    IITS.toast(`Attendance was saved, but recovery data could not be cleared: ${error.message}`, "error");
+  }
+}
+
+function getAttendanceDraft(sessionId, rosterIds) {
+  const key = attendanceStorageKey("draft", sessionId);
+  if (!key) return {};
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) || "{}");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const draft = {};
+    Object.entries(parsed).forEach(([studentId, mark]) => {
+      if (!rosterIds.has(studentId) || !mark || typeof mark !== "object") return;
+      if (!STATUSES.some(status => status.key === mark.status)) return;
+      draft[studentId] = {
+        status: mark.status,
+        marked_via: mark.marked_via === "face" ? "face" : "checklist",
+        note: typeof mark.note === "string" ? mark.note : null,
+      };
+    });
+    return draft;
+  } catch (error) {
+    IITS.toast(`Could not restore unsaved attendance marks: ${error.message}`, "error");
+    return {};
+  }
+}
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, character => ({
@@ -154,6 +228,7 @@ function renderRoster() {
       }
 
       marks[sid] = { status: btn.dataset.status, marked_via: "checklist" };
+      saveAttendanceDraft();
       group.querySelectorAll(".status-pill").forEach(p => p.classList.toggle("on", p === btn));
     });
   });
@@ -162,15 +237,18 @@ function renderRoster() {
 let pendingExcuseStudentId = null;
 
 function openReasonModal(studentId) {
+  if (reasonDraft) reasonDraft.stop();
   pendingExcuseStudentId = studentId;
   const student = roster.find(s => s.id === studentId);
   document.getElementById("reason-student-name").textContent = student ? student.full_name : "";
   document.getElementById("reason-text").value = marks[studentId]?.note || "";
+  reasonDraft = IITS.draft.start("#reason-form", `attendance-excuse:${currentSessionId}:${studentId}`);
   document.getElementById("reason-modal").classList.add("open");
   setTimeout(() => document.getElementById("reason-text").focus(), 50);
 }
 
 function closeReasonModal() {
+  if (reasonDraft) { reasonDraft.stop(); reasonDraft = null; }
   document.getElementById("reason-modal").classList.remove("open");
   document.getElementById("reason-form").reset();
   pendingExcuseStudentId = null;
@@ -202,6 +280,8 @@ async function loadSessions() {
 
 async function activateSession(session) {
   stopFaceCamera();
+  if (sessionTaskDraft) sessionTaskDraft.stop();
+  sessionTaskDraft = null;
   currentSessionId = session.id;
   currentClubId = session.club_id;
   const clubId = currentClubId;
@@ -215,6 +295,10 @@ async function activateSession(session) {
   marks = Object.fromEntries(records.map(record => [record.student_id, {
     status: record.status, marked_via: record.marked_via, note: record.note,
   }]));
+  const recovered = getAttendanceDraft(session.id, new Set(roster.map(student => student.id)));
+  restoredAttendanceDraft = Object.keys(recovered).length > 0;
+  marks = { ...marks, ...recovered };
+  saveAttendanceSelection(clubId, session.id);
   renderRoster();
   renderSessionTasks(tasks);
   const club = (await IITS.api("/api/clubs")).find(item => item.id === clubId);
@@ -223,6 +307,11 @@ async function activateSession(session) {
   switchMode("face");
   document.getElementById("face-status").textContent =
     `Club roster loaded: ${roster.length} active student${roster.length === 1 ? "" : "s"}. Start recognition to check them in.`;
+  sessionTaskDraft = IITS.draft.start("#session-task-form", `attendance-session-task:${session.id}`);
+  if (restoredAttendanceDraft) {
+    IITS.toast("Restored unsaved attendance marks for this session", "success");
+    restoredAttendanceDraft = false;
+  }
 }
 
 function renderSessionTasks(tasks) {
@@ -281,6 +370,8 @@ async function assignSessionTask(event) {
   try {
     await IITS.api("/api/coach/tasks", { method: "POST", body: payload });
     document.getElementById("session-task-form").reset();
+    if (sessionTaskDraft) sessionTaskDraft.clear();
+    sessionTaskDraft = IITS.draft.start("#session-task-form", `attendance-session-task:${currentSessionId}`);
     const tasks = await IITS.api(`/api/coach/tasks?club_id=${encodeURIComponent(currentClubId)}&session_id=${encodeURIComponent(currentSessionId)}`);
     renderSessionTasks(tasks);
     IITS.toast("Task assigned to this session", "success");
@@ -296,6 +387,7 @@ async function saveAttendance() {
   btn.disabled = true; btn.textContent = "Saving…";
   try {
     const res = await IITS.api(`/api/coach/attendance/sessions/${currentSessionId}/records`, { method: "POST", body: { records } });
+    clearAttendanceDraft(currentSessionId);
     const notices = res && res.absence_notices_sent ? ` · ${res.absence_notices_sent} absence notice(s) emailed to students & parents` : "";
     IITS.toast(`Saved attendance for ${records.length} student(s)${notices}`, "success");
   } catch (e) { IITS.toast(e.message, "error"); }
@@ -356,6 +448,7 @@ async function scanNextFace() {
     if (result.status === "found") {
       const alreadyCheckedIn = marks[result.student_id]?.status === "present";
       marks[result.student_id] = { status: "present", marked_via: "face" };
+      saveAttendanceDraft();
       renderRoster();
       status.textContent = alreadyCheckedIn
         ? `${result.student_name} is already checked in. Present the next student.`
@@ -364,8 +457,10 @@ async function scanNextFace() {
       status.textContent = "Recognized student is not an active member of this club.";
     } else if (result.status === "ambiguous") {
       status.textContent = "This face matches duplicate student IC records. Ask an administrator to resolve the roster.";
+    } else if (result.status === "not_detected") {
+      status.textContent = "No face detected. Move closer, face the camera, and improve the lighting.";
     } else {
-      status.textContent = "No enrolled student matched this frame. Present one face clearly at a time.";
+      status.textContent = "Face detected, but no enrolled student matched. Check the enrolled photo or ask an admin to update it.";
     }
   } catch (e) {
     stopFaceCamera();
@@ -394,6 +489,7 @@ document.addEventListener("iits:shell-ready", async () => {
   document.getElementById("club-select").addEventListener("change", () => {
     currentSessionId = null;
     currentClubId = null;
+    saveAttendanceSelection(document.getElementById("club-select").value);
     document.getElementById("session-area").style.display = "none";
     switchMode("face");
     stopFaceCamera();
@@ -405,6 +501,7 @@ document.addEventListener("iits:shell-ready", async () => {
   document.getElementById("save-attendance-btn").addEventListener("click", saveAttendance);
   document.getElementById("mark-all-present").addEventListener("click", () => {
     roster.forEach(s => marks[s.id] = { status: "present", marked_via: "checklist" });
+    saveAttendanceDraft();
     renderRoster();
   });
   document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => switchMode(t.dataset.mode)));
@@ -417,9 +514,20 @@ document.addEventListener("iits:shell-ready", async () => {
     const reason = document.getElementById("reason-text").value.trim();
     if (!reason) { IITS.toast("Please enter a reason", "error"); return; }
     marks[pendingExcuseStudentId] = { status: "excused", marked_via: "checklist", note: reason };
+    saveAttendanceDraft();
+    if (reasonDraft) { reasonDraft.clear(); reasonDraft = null; }
     closeReasonModal();
     renderRoster();
   });
+  const selection = getAttendanceSelection();
+  if (selection?.clubId && [...document.getElementById("club-select").options].some(option => option.value === selection.clubId)) {
+    document.getElementById("club-select").value = selection.clubId;
+    await loadSessions();
+    if (selection.sessionId && [...document.getElementById("session-select").options].some(option => option.value === selection.sessionId)) {
+      document.getElementById("session-select").value = selection.sessionId;
+      await openSelectedSession();
+    }
+  }
 });
 </script>
 </body>

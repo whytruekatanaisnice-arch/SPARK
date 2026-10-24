@@ -75,7 +75,13 @@
     const form = document.getElementById("achievement-certificate-form");
     let studentId = null;
     let draftId = null;
+    let certificateDraft = null;
     let guide;
+
+    function startCertificateDraft() {
+      if (certificateDraft) certificateDraft.stop();
+      certificateDraft = IITS.draft.start(form, `achievement-certificate:${studentId}`);
+    }
 
     try {
       guide = await IITS.api("/api/achievement-certificate-scoring");
@@ -97,8 +103,6 @@
 
     async function loadStudentData() {
       if (!studentId) return;
-      form.dataset.draftScope = studentId;
-      IITS.restoreAutoSaveDraftFields(studentId);
       draftId = null;
       document.getElementById("draft-id").value = "";
       document.getElementById("ocr-text").textContent = "Upload a certificate and run OCR to review its text.";
@@ -141,9 +145,10 @@
         await new Promise(resolve => window.requestAnimationFrame(resolve));
         studentId = childSelect.value;
         childSelect.addEventListener("change", () => {
+          if (certificateDraft) certificateDraft.stop();
           form.reset();
           studentId = childSelect.value;
-          form.dataset.draftScope = studentId;
+          startCertificateDraft();
           loadStudentData();
         });
       } catch (error) {
@@ -164,6 +169,7 @@
       }
     }
 
+    startCertificateDraft();
     ["competition-level", "participation-type", "placement"].forEach(id => {
       document.getElementById(id).addEventListener("change", () => updateScorePreview(guide));
     });
@@ -255,8 +261,10 @@
           method: "POST", body: payload,
         });
         draftId = null;
+        if (certificateDraft) certificateDraft.clear();
         form.reset();
-        IITS.toast("Certificate submitted. Points will count after staff approval.", "success");
+        startCertificateDraft();
+        IITS.toast("Certificate submitted. Points will count after admin approval.", "success");
         await loadStudentData();
       } catch (error) {
         IITS.toast(`Could not submit certificate: ${error.message}`, "error");
@@ -276,7 +284,7 @@
       list.innerHTML = `<div class="loading-row"><span class="spinner"></span> Loading submissions…</div>`;
       try {
         const query = filter.value ? `?status=${encodeURIComponent(filter.value)}` : "";
-        const reviews = await IITS.api(`/api/coach/certificate-submissions${query}`);
+        const reviews = await IITS.api(`/api/admin/achievement-certificates${query}`);
         list.innerHTML = reviews.length ? reviews.map(item => `
           <article class="card" data-review-id="${escapeHtml(item.id)}" style="margin-bottom:14px;">
             <div class="flex between" style="gap:10px;flex-wrap:wrap;">
@@ -320,7 +328,7 @@
       const action = button.dataset.action;
       try {
         if (action === "file") {
-          const result = await IITS.api(`/api/coach/certificate-submissions/${encodeURIComponent(button.dataset.id)}/file`);
+          const result = await IITS.api(`/api/admin/achievement-certificates/${encodeURIComponent(button.dataset.id)}/file`);
           const card = button.closest("[data-review-id]");
           const link = card.querySelector("[data-file-link]");
           link.href = result.url;
@@ -329,7 +337,7 @@
         }
         const status = action === "approve" ? "approved" : "rejected";
         const note = document.getElementById(`note-${button.dataset.id}`);
-        await IITS.api(`/api/coach/certificate-submissions/${encodeURIComponent(button.dataset.id)}`, {
+        await IITS.api(`/api/admin/achievement-certificates/${encodeURIComponent(button.dataset.id)}`, {
           method: "PATCH",
           body: { status, review_note: note ? note.value.trim() || null : null },
         });

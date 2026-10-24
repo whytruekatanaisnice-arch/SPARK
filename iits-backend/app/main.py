@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.routers import achievement_certificates
 from app.routers import (
     admin, announcements, attendance, auth, certificates, clubs, coach, messaging,
     nilam, notifications, parent, reports, student, tasks, uploads,
@@ -31,6 +32,7 @@ app.include_router(clubs.admin_router)
 app.include_router(announcements.admin_router)
 app.include_router(reports.router)
 app.include_router(certificates.admin_router)
+app.include_router(achievement_certificates.review_router)
 
 # --- Coach ---
 app.include_router(coach.router)
@@ -42,10 +44,12 @@ app.include_router(student.router)
 app.include_router(tasks.student_router)
 app.include_router(nilam.router)
 app.include_router(certificates.student_router)
+app.include_router(achievement_certificates.student_router)
 
 # --- Parent ---
 app.include_router(parent.router)
 app.include_router(certificates.parent_router)
+app.include_router(achievement_certificates.parent_router)
 
 # --- Shared ---
 app.include_router(clubs.router)
@@ -53,6 +57,7 @@ app.include_router(announcements.router)
 app.include_router(notifications.router)
 app.include_router(messaging.router)
 app.include_router(uploads.router)
+app.include_router(achievement_certificates.scoring_router)
 
 
 @app.get("/health", tags=["health"])

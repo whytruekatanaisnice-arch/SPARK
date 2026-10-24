@@ -46,6 +46,8 @@ async def change_password(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
+    if payload.old_password == payload.new_password:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="New password must be different from the current password")
     if not verify_password(payload.old_password, current_user.password_hash):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Old password is incorrect")
 

@@ -64,6 +64,9 @@
         </select>
       </div>
       <div class="field"><label for="phone">Phone (optional)</label><input type="text" id="phone"></div>
+      <div class="field" id="is-active-field" hidden>
+        <label class="checkbox-row"><input type="checkbox" id="is_active"> <span style="font-weight:500;">Active account</span></label>
+      </div>
 
       <div id="student-fields">
         <div class="field"><label for="ic_number">Student IC number (for face recognition)</label><input type="text" id="ic_number" inputmode="numeric" maxlength="20" placeholder="12-digit IC number"></div>
@@ -84,10 +87,25 @@
         </div>
       </div>
 
-      <p class="hint" style="margin:-4px 0 14px;">A temporary password is generated automatically for new accounts and shown once you save.</p>
+      <p class="hint user-create-hint" style="margin:-4px 0 14px;">A temporary password is generated automatically for new accounts and shown once you save.</p>
       <div class="flex gap-8" style="justify-content:flex-end;">
         <button type="button" class="btn btn-secondary" id="cancel-btn">Cancel</button>
         <button type="submit" class="btn btn-primary" id="save-btn">Save user</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="club-invite-modal">
+  <div class="modal">
+    <div class="modal-head"><h2>Invite student to a club</h2><button type="button" class="modal-close" id="club-invite-close">✕</button></div>
+    <p class="muted" id="club-invite-student"></p>
+    <form id="club-invite-form">
+      <div class="field"><label for="invite-club-select">Club</label><select id="invite-club-select" required></select></div>
+      <p class="hint">The student will be added immediately and receive an in-app notification.</p>
+      <div class="flex gap-8" style="justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary" id="club-invite-cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="club-invite-submit">Invite student</button>
       </div>
     </form>
   </div>
@@ -123,6 +141,8 @@ let enrollmentStream = null;
 let enrollmentStudentId = null;
 let capturedFaceImage = null;
 let capturedFaceIc = null;
+let editingUserId = null;
+let invitingStudentId = null;
 
 function badgeForRole(role) {
   const map = { admin: "blue", coach: "green", student: "yellow", parent: "grey" };
@@ -136,13 +156,15 @@ function renderUsers(users) {
     return;
   }
   tbody.innerHTML = users.map(u => `
-    <tr>
-      <td>${u.full_name}</td>
+    <tr data-user-id="${u.id}" style="cursor:pointer;">
+      <td><button type="button" class="btn btn-ghost btn-sm" onclick="editUser('${u.id}')">${u.full_name}</button></td>
       <td>${u.email}</td>
       <td>${badgeForRole(u.role)}</td>
       <td>${u.is_active ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-red">Deactivated</span>'}</td>
       <td class="flex gap-8">
         ${u.role === "student" && u.is_active ? `<button class="btn btn-secondary btn-sm" onclick="openFaceEnrollment('${u.id}')">${faceEnrollments[u.id]?.face_enrolled ? "Update face" : "Register face"}</button>` : ""}
+        ${u.role === "student" && u.is_active ? `<button class="btn btn-secondary btn-sm" onclick="openClubInvite('${u.id}')">Invite to club</button>` : ""}
+        <button class="btn btn-secondary btn-sm" onclick="editUser('${u.id}')">Edit user</button>
         <button class="btn btn-secondary btn-sm" onclick="resetPassword('${u.id}')">Reset password</button>
         <button class="btn btn-danger btn-sm" onclick="deactivateUser('${u.id}')">${u.is_active ? "Deactivate" : "Deactivated"}</button>
       </td>
@@ -321,25 +343,117 @@ function toggleRoleFields() {
   const role = document.getElementById("role").value;
   document.getElementById("student-fields").style.display = role === "student" ? "block" : "none";
   document.getElementById("coach-fields").style.display = role === "coach" ? "block" : "none";
-  document.getElementById("parent-fields").style.display = role === "parent" ? "block" : "none";
+  document.getElementById("parent-fields").style.display = role === "parent" && !editingUserId ? "block" : "none";
 }
 
+let userDraft = null;
 function openModal() {
   document.getElementById("user-modal").classList.add("open");
+  if (!editingUserId) {
+    if (userDraft) userDraft.stop();
+    userDraft = IITS.draft.start("#user-form", "admin-user-new");
+  }
 }
 function closeModal() {
+  if (userDraft) { userDraft.stop(); userDraft = null; }
   document.getElementById("user-modal").classList.remove("open");
   document.getElementById("user-form").reset();
+  document.getElementById("user-id").value = "";
+  document.getElementById("role").disabled = false;
+  document.getElementById("email").readOnly = false;
+  document.getElementById("modal-title").textContent = "New user";
+  document.getElementById("save-btn").textContent = "Save user";
+  document.querySelector(".user-create-hint").hidden = false;
+  document.getElementById("is-active-field").hidden = true;
+  editingUserId = null;
   toggleRoleFields();
+}
+
+async function editUser(userId) {
+  try {
+    const user = await IITS.api(`/api/admin/users/${encodeURIComponent(userId)}`);
+    editingUserId = user.id;
+    document.getElementById("user-id").value = user.id;
+    document.getElementById("full_name").value = user.full_name || "";
+    document.getElementById("email").value = user.email || "";
+    document.getElementById("phone").value = user.phone || "";
+    document.getElementById("role").value = user.role;
+    document.getElementById("role").disabled = true;
+    document.getElementById("student_number").value = user.student_number || "";
+    document.getElementById("class_name").value = user.class_name || "";
+    document.getElementById("ic_number").value = user.ic_number || "";
+    document.getElementById("staff_number").value = user.staff_number || "";
+    document.getElementById("subject").value = user.subject || "";
+    document.getElementById("email").readOnly = false;
+    document.getElementById("modal-title").textContent = "Edit user";
+    document.getElementById("save-btn").textContent = "Save changes";
+    document.querySelector(".user-create-hint").hidden = true;
+    document.getElementById("is-active-field").hidden = false;
+    document.getElementById("is_active").checked = user.is_active;
+    toggleRoleFields();
+    openModal();
+  } catch (error) {
+    IITS.toast(`Could not load user: ${error.message}`, "error");
+  }
+}
+
+async function openClubInvite(userId) {
+  const student = allUsers.find(user => user.id === userId);
+  if (!student || student.role !== "student") return;
+  try {
+    const clubs = await IITS.api("/api/clubs");
+    const select = document.getElementById("invite-club-select");
+    select.replaceChildren(...clubs.map(club => new Option(club.name, club.id)));
+    if (!clubs.length) {
+      IITS.toast("Create an active club before inviting students.", "error");
+      return;
+    }
+    invitingStudentId = student.id;
+    document.getElementById("club-invite-student").textContent = `${student.full_name} · ${student.student_number || "Student"}`;
+    document.getElementById("club-invite-modal").classList.add("open");
+  } catch (error) {
+    IITS.toast(`Could not load clubs: ${error.message}`, "error");
+  }
+}
+
+function closeClubInvite() {
+  document.getElementById("club-invite-modal").classList.remove("open");
+  document.getElementById("club-invite-form").reset();
+  invitingStudentId = null;
 }
 
 document.addEventListener("iits:shell-ready", () => {
   loadUsers();
+  document.getElementById("users-tbody").addEventListener("click", event => {
+    if (event.target.closest("button")) return;
+    const row = event.target.closest("tr[data-user-id]");
+    if (row) editUser(row.dataset.userId);
+  });
+  document.getElementById("club-invite-form").addEventListener("submit", async event => {
+    event.preventDefault();
+    if (!invitingStudentId) return;
+    const button = document.getElementById("club-invite-submit");
+    button.disabled = true;
+    try {
+      const result = await IITS.api(
+        `/api/admin/clubs/${encodeURIComponent(document.getElementById("invite-club-select").value)}/invite`,
+        { method: "POST", body: { student_id: invitingStudentId } },
+      );
+      IITS.toast(result.detail, "success");
+      closeClubInvite();
+    } catch (error) {
+      IITS.toast(`Could not invite student: ${error.message}`, "error");
+    } finally {
+      button.disabled = false;
+    }
+  });
   document.getElementById("search-input").addEventListener("input", debounce(loadUsers, 350));
   document.getElementById("role-filter").addEventListener("change", loadUsers);
   document.getElementById("new-user-btn").addEventListener("click", () => { document.getElementById("modal-title").textContent = "New user"; openModal(); });
   document.getElementById("modal-close").addEventListener("click", closeModal);
   document.getElementById("cancel-btn").addEventListener("click", closeModal);
+  document.getElementById("club-invite-close").addEventListener("click", closeClubInvite);
+  document.getElementById("club-invite-cancel").addEventListener("click", closeClubInvite);
   document.getElementById("role").addEventListener("change", toggleRoleFields);
   document.getElementById("face-modal-close").addEventListener("click", closeFaceEnrollment);
   document.getElementById("start-enrollment-camera").addEventListener("click", startEnrollmentCamera);
@@ -355,18 +469,34 @@ document.addEventListener("iits:shell-ready", () => {
       email: document.getElementById("email").value.trim(),
       role: document.getElementById("role").value,
       phone: document.getElementById("phone").value.trim() || null,
-      ic_number: document.getElementById("ic_number").value.trim() || null,
-      student_number: document.getElementById("student_number").value.trim() || null,
+    };
+    if (payload.role === "student") Object.assign(payload, {
+      student_number: document.getElementById("student_number").value.trim(),
       class_name: document.getElementById("class_name").value.trim() || null,
+      ic_number: document.getElementById("ic_number").value.trim() || null,
+    });
+    if (payload.role === "coach") Object.assign(payload, {
       staff_number: document.getElementById("staff_number").value.trim() || null,
       subject: document.getElementById("subject").value.trim() || null,
-      child_student_numbers: document.getElementById("child_numbers").value
+    });
+    if (payload.role === "parent") {
+      payload.child_student_numbers = document.getElementById("child_numbers").value
         ? document.getElementById("child_numbers").value.split(",").map(s => s.trim()).filter(Boolean)
-        : null,
-    };
+        : null;
+    }
     try {
-      await IITS.api("/api/admin/users", { method: "POST", body: payload });
-      IITS.toast("User created", "success");
+      if (editingUserId) {
+        delete payload.role;
+        await IITS.api(`/api/admin/users/${encodeURIComponent(editingUserId)}`, {
+          method: "PATCH",
+          body: { ...payload, is_active: document.getElementById("is_active").checked },
+        });
+        IITS.toast("User updated", "success");
+      } else {
+        await IITS.api("/api/admin/users", { method: "POST", body: payload });
+        IITS.toast("User created", "success");
+        if (userDraft) { userDraft.clear(); userDraft = null; }
+      }
       closeModal();
       await Promise.all([loadUsers(), loadFaceEnrollments()]);
     } catch (e2) { IITS.toast(e2.message, "error"); }

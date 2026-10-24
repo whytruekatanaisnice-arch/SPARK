@@ -45,6 +45,7 @@
 <script src="/shared/js/shell.js"></script>
 <script>
 let ranks = [];
+let achievementDraft = null;
 
 async function loadMyClubs() {
   const user = IITS.getUser();
@@ -95,7 +96,8 @@ document.addEventListener("iits:shell-ready", async () => {
 
   document.getElementById("club-select").addEventListener("change", loadRosterForClub);
   document.getElementById("rank_id").addEventListener("change", updatePointsPreview);
-  loadRosterForClub();
+  await loadRosterForClub();
+  achievementDraft = IITS.draft.start("#achievement-form", "coach-achievement-new");
 
   document.getElementById("achievement-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -111,6 +113,8 @@ document.addEventListener("iits:shell-ready", async () => {
       await IITS.api("/api/coach/achievements", { method: "POST", body: payload });
       IITS.toast("Achievement recorded — PAJSK updated", "success");
       document.getElementById("competition_name").value = "";
+      if (achievementDraft) achievementDraft.clear();
+      achievementDraft = IITS.draft.start("#achievement-form", "coach-achievement-new");
       loadAchievements();
     } catch (err) { IITS.toast(err.message, "error"); }
   });

@@ -2,13 +2,12 @@
  * Autosave utilities (every field, every role).
  *
  * 1) IITS.autosave({...})  — for EXISTING records (profile, edit forms, notes).
- *    Every 10 seconds, if any watched field changed since the last successful
- *    save, the changes are sent to the server. Failed saves stay "dirty" and
- *    are retried on the next tick. A status line shows what's happening.
+ *    Changes are sent to the server shortly after editing and kept locally
+ *    until the server confirms them. Failed saves remain available for retry.
  *
  * 2) IITS.draft.start(form, key) — for NEW records ("create" forms) that have no
- *    server record to save into yet. Field values are kept in localStorage every
- *    10 seconds and restored if the page is reloaded/closed by accident.
+ *    server record to save into yet. Field values are kept in localStorage while
+ *    editing and restored if the page is reloaded/closed by accident.
  *    Call .clear() after a successful submit.
  */
 (function () {
@@ -54,12 +53,34 @@
     let saved = {};
     let saving = false;
     let stopped = false;
+    let debounceTimer = null;
+    const user = IITS.getUser();
+    const recoveryKey = `iits_autosave:${user ? user.id : "anon"}:${location.pathname}:${els.map(keyOf).join(",")}`;
 
     function snapshot() { const s = {}; els.forEach(el => s[keyOf(el)] = valueOf(el)); return s; }
     function changedKeys(now) { return Object.keys(now).filter(k => now[k] !== saved[k]); }
     function validEls() { return els.filter(el => !el.checkValidity || el.checkValidity()); }
 
-    function markClean() { saved = snapshot(); setStatus(indicator, "idle", "Changes save automatically"); }
+    function storeRecovery() {
+      try {
+        const metadata = typeof opts.getRecoveryMetadata === "function" ? opts.getRecoveryMetadata() : {};
+        localStorage.setItem(recoveryKey, JSON.stringify({ fields: snapshot(), metadata }));
+      } catch (error) {
+        setStatus(indicator, "error", `Could not save local recovery data (${error.message})`);
+      }
+    }
+    function clearRecovery() {
+      try {
+        localStorage.removeItem(recoveryKey);
+      } catch (error) {
+        setStatus(indicator, "error", `Could not clear local recovery data (${error.message})`);
+      }
+    }
+    function markClean() {
+      saved = snapshot();
+      clearRecovery();
+      setStatus(indicator, "idle", "Changes save automatically");
+    }
 
     async function flush() {
       if (stopped || saving) return;
@@ -81,27 +102,87 @@
         await opts.save(payload);
         keys.forEach(k => saved[k] = now[k]);        // only mark what we actually sent as clean
         const stillDirty = changedKeys(snapshot()).length > 0;
+        if (!stillDirty) clearRecovery();
         setStatus(indicator, stillDirty ? "dirty" : "saved", stillDirty ? "Unsaved changes…" : "All changes saved · " + clock());
       } catch (e) {
-        setStatus(indicator, "error", "Couldn't save (" + (e.message || "error") + ") — retrying in 10s");
-      } finally { saving = false; }
+        storeRecovery();
+        setStatus(indicator, "error", "Couldn't save (" + (e.message || "error") + ") — retrying");
+      } finally {
+        saving = false;
+        if (!stopped && changedKeys(snapshot()).length) scheduleFlush();
+      }
     }
 
+    function scheduleFlush() {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(flush, opts.debounce || 800);
+    }
+
+    const initial = snapshot();
+    try {
+      const raw = localStorage.getItem(recoveryKey);
+      if (raw) {
+        const recovery = JSON.parse(raw);
+        if (recovery && typeof recovery === "object" && !Array.isArray(recovery)) {
+          const fields = recovery.fields && typeof recovery.fields === "object" ? recovery.fields : recovery;
+          els.forEach(el => {
+            const key = keyOf(el);
+            if (!(key in fields)) return;
+            if (el.type === "checkbox") el.checked = !!fields[key];
+            else if (fields[key] == null || ["string", "number"].includes(typeof fields[key])) {
+              el.value = String(fields[key] ?? "");
+            }
+          });
+          if (typeof opts.restoreRecoveryMetadata === "function") {
+            opts.restoreRecoveryMetadata(recovery.metadata && typeof recovery.metadata === "object" ? recovery.metadata : {});
+          }
+          if (IITS.toast && JSON.stringify(initial) !== JSON.stringify(snapshot())) {
+            IITS.toast("Restored unsaved changes", "success");
+          }
+        } else {
+          clearRecovery();
+        }
+      }
+    } catch (error) {
+      clearRecovery();
+      IITS.toast(`Could not restore local recovery data: ${error.message}`, "error");
+    }
+
+    function onEdit() {
+      storeRecovery();
+      if (indicator.dataset.state !== "saving") setStatus(indicator, "dirty", "Unsaved changes… saving shortly");
+      scheduleFlush();
+    }
     els.forEach(el => {
-      const onEdit = () => { if (indicator.dataset.state !== "saving") setStatus(indicator, "dirty", "Unsaved changes… saving within 10s"); };
       el.addEventListener("input", onEdit);
       el.addEventListener("change", onEdit);
     });
 
-    markClean();
+    saved = initial;
+    if (changedKeys(snapshot()).length) scheduleFlush();
     const timer = setInterval(flush, opts.interval || INTERVAL_MS);
-    const onHide = () => { if (document.visibilityState === "hidden") flush(); };
+    const onHide = () => {
+      if (document.visibilityState === "hidden") {
+        storeRecovery();
+        flush();
+      }
+    };
     document.addEventListener("visibilitychange", onHide);
 
     return {
       flush, markClean,
       isDirty: () => changedKeys(snapshot()).length > 0,
-      stop() { stopped = true; clearInterval(timer); document.removeEventListener("visibilitychange", onHide); indicator.remove(); },
+      stop() {
+        stopped = true;
+        clearTimeout(debounceTimer);
+        clearInterval(timer);
+        document.removeEventListener("visibilitychange", onHide);
+        els.forEach(el => {
+          el.removeEventListener("input", onEdit);
+          el.removeEventListener("change", onEdit);
+        });
+        indicator.remove();
+      },
     };
   };
 
@@ -111,17 +192,19 @@
       form = $(form);
       const user = IITS.getUser();
       const storeKey = `iits_draft:${user ? user.id : "anon"}:${key}`;
-      const fields = [...form.querySelectorAll("input, textarea, select")]
-        .filter(el => el.type !== "file" && el.type !== "password" && el.type !== "hidden" && (el.id || el.name));
-      const id = el => el.id || el.name;
+      const getFields = () => [...form.querySelectorAll("input, textarea, select")]
+        .filter(el => el.type !== "file" && el.type !== "password" && el.type !== "hidden" && el.dataset.noDraft !== "true" && (el.dataset.key || el.id || el.name));
+      const id = el => el.dataset.key || el.id || el.name;
+      let debounceTimer = null;
 
       // Restore a previous draft, if any.
       try {
         const raw = localStorage.getItem(storeKey);
         if (raw) {
           const data = JSON.parse(raw);
+          if (opts && typeof opts.restore === "function") opts.restore(data, form);
           let restored = 0;
-          fields.forEach(el => {
+          getFields().forEach(el => {
             if (!(id(el) in data)) return;
             if (el.type === "checkbox") el.checked = !!data[id(el)]; else el.value = data[id(el)];
             if (data[id(el)] !== "" && data[id(el)] !== false) restored++;
@@ -129,24 +212,56 @@
           });
           if (restored && IITS.toast) IITS.toast("Restored your unsaved draft", "success");
         }
-      } catch (e) { /* ignore corrupt drafts */ }
+      } catch (error) {
+        try { localStorage.removeItem(storeKey); } catch (storageError) {
+          IITS.toast(`Could not clear a damaged draft: ${storageError.message}`, "error");
+        }
+        IITS.toast(`Could not restore your draft: ${error.message}`, "error");
+      }
 
       function store() {
         try {
           const data = {};
-          fields.forEach(el => data[id(el)] = el.type === "checkbox" ? el.checked : el.value);
+          getFields().forEach(el => data[id(el)] = el.type === "checkbox" ? el.checked : el.value);
           const hasContent = Object.values(data).some(v => v !== "" && v !== false);
           if (hasContent) localStorage.setItem(storeKey, JSON.stringify(data)); else localStorage.removeItem(storeKey);
-        } catch (e) { /* storage full/blocked — draft just won't persist */ }
+        } catch (error) {
+          IITS.toast(`Could not save your draft: ${error.message}`, "error");
+        }
       }
 
+      function scheduleStore() {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(store, (opts && opts.debounce) || 400);
+      }
+      form.addEventListener("input", scheduleStore);
+      form.addEventListener("change", scheduleStore);
       const timer = setInterval(store, (opts && opts.interval) || INTERVAL_MS);
+      const onPageHide = () => store();
+      window.addEventListener("pagehide", onPageHide);
       let cleared = false;
       return {
-        // stop(): final save of whatever is typed (so closing a modal never loses the last <10s)
-        stop() { clearInterval(timer); if (!cleared) store(); },
+        // stop(): final save of whatever is typed before the form is hidden or reset
+        stop() {
+          clearTimeout(debounceTimer);
+          clearInterval(timer);
+          window.removeEventListener("pagehide", onPageHide);
+          form.removeEventListener("input", scheduleStore);
+          form.removeEventListener("change", scheduleStore);
+          if (!cleared) store();
+        },
         // clear(): call after a successful submit — drops the draft for good
-        clear() { cleared = true; clearInterval(timer); try { localStorage.removeItem(storeKey); } catch (e) {} },
+        clear() {
+          cleared = true;
+          clearTimeout(debounceTimer);
+          clearInterval(timer);
+          window.removeEventListener("pagehide", onPageHide);
+          form.removeEventListener("input", scheduleStore);
+          form.removeEventListener("change", scheduleStore);
+          try { localStorage.removeItem(storeKey); } catch (error) {
+            IITS.toast(`Could not clear your saved draft: ${error.message}`, "error");
+          }
+        },
       };
     },
   };

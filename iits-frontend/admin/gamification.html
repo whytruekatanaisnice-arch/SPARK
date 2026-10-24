@@ -10,10 +10,19 @@
 <div id="page-root">
 
   <div class="page-head">
-    <div><h1>Inter-club competitions</h1><p>Run friendly competitions between clubs, ranked by attendance, tasks, and achievements.</p></div>
+    <div><h1>Monthly gamification</h1><p>Automatically rank the top three active clubs in each category every month.</p></div>
     <button class="btn btn-primary" id="new-btn">+ New competition</button>
   </div>
 
+  <div class="card" style="margin-bottom:18px;">
+    <div class="flex between" style="align-items:end;gap:12px;flex-wrap:wrap;">
+      <div><h2>Monthly top clubs</h2><p class="muted">Score = present attendance + task submissions + (2 × achievements). Activity is counted in Malaysia time.</p></div>
+      <div class="field" style="margin:0;max-width:220px;"><label for="monthly-month">Month</label><input type="month" id="monthly-month" required></div>
+    </div>
+    <div id="monthly-leaderboards" style="margin-top:16px;"><div class="loading-row"><span class="spinner"></span> Calculating monthly rankings…</div></div>
+  </div>
+
+  <div class="section-head"><h2>Custom competitions</h2><p class="muted">Existing date-range competitions remain available below.</p></div>
   <div id="comp-list"><div class="loading-row"><span class="spinner"></span> Loading competitions…</div></div>
 
   <div class="card" id="leaderboard-card" style="display:none;margin-top:18px;">
@@ -76,6 +85,41 @@ function renderCompetitions() {
       <p class="muted" style="font-size:0.82rem;">${c.start_date} → ${c.end_date}</p>
       <button class="btn btn-secondary btn-sm" onclick="showLeaderboard('${c.id}','${c.name.replace(/'/g, "\\'")}')" style="margin-top:6px;">View leaderboard</button>
     </div>`).join("") + `</div>`;
+}
+
+function escapeLeaderboardText(value) {
+  return String(value).replace(/[&<>"']/g, character => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  })[character]);
+}
+
+async function loadMonthlyLeaderboard() {
+  const month = document.getElementById("monthly-month").value;
+  if (!month) return;
+  const container = document.getElementById("monthly-leaderboards");
+  container.innerHTML = `<div class="loading-row"><span class="spinner"></span> Calculating monthly rankings…</div>`;
+  try {
+    const leaderboard = await IITS.api(`/api/admin/monthly-gamification?month=${encodeURIComponent(month)}`);
+    const groups = leaderboard.categories.map(group => `
+      <div class="card">
+        <h3>${escapeLeaderboardText(group.category)}</h3>
+        ${group.top_clubs.length ? `
+          <div class="table-wrap"><table>
+            <thead><tr><th>Rank</th><th>Club</th><th>Attendance</th><th>Tasks</th><th>Achievements</th><th>Total</th></tr></thead>
+            <tbody>${group.top_clubs.map(entry => `
+              <tr>
+                <td><span class="badge ${entry.rank === 1 ? "badge-yellow" : "badge-grey"}">#${entry.rank}</span></td>
+                <td>${escapeLeaderboardText(entry.club_name)}</td>
+                <td>${entry.attendance_score}</td><td>${entry.task_score}</td><td>${entry.achievement_score}</td>
+                <td><strong>${entry.total_score}</strong></td>
+              </tr>`).join("")}</tbody>
+          </table></div>` : `<p class="muted">No active clubs in this category.</p>`}
+      </div>`).join("");
+    container.innerHTML = `<div class="grid grid-3">${groups}</div>`;
+  } catch (error) {
+    container.innerHTML = `<p class="muted">Could not calculate this month’s rankings.</p>`;
+    IITS.toast(error.message, "error");
+  }
 }
 
 async function loadCompetitions() {
@@ -145,6 +189,16 @@ function closeModal() {
 }
 
 document.addEventListener("iits:shell-ready", () => {
+  const monthParts = new Intl.DateTimeFormat("en", {
+    timeZone: "Asia/Kuala_Lumpur",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(new Date());
+  const currentYear = monthParts.find(part => part.type === "year").value;
+  const currentMonth = monthParts.find(part => part.type === "month").value;
+  document.getElementById("monthly-month").value = `${currentYear}-${currentMonth}`;
+  loadMonthlyLeaderboard();
+  document.getElementById("monthly-month").addEventListener("change", loadMonthlyLeaderboard);
   loadCompetitions();
   document.getElementById("new-btn").addEventListener("click", () => { closeModal(); openModal(); modalDraft = IITS.draft.start("#comp-form", "competition-new"); });
   document.getElementById("modal-close").addEventListener("click", closeModal);
