@@ -59,6 +59,11 @@ async def setup_database() -> None:
         await conn.run_sync(Base.metadata.create_all)
 
         await conn.execute(text("""
+            ALTER TABLE public.conversation_participants
+                ADD COLUMN IF NOT EXISTS last_read_at timestamptz
+        """))
+
+        await conn.execute(text("""
             ALTER TABLE public.tasks
                 ADD COLUMN IF NOT EXISTS session_id uuid
                 REFERENCES public.attendance_sessions(id)

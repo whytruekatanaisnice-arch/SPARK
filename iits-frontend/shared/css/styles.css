@@ -307,3 +307,14 @@ tbody tr:hover { background: #FAFBFF; }
 }
 .bottom-nav .nav-item { position: relative; }
 .bottom-nav .nav-badge { position: absolute; top: 2px; right: 14%; margin: 0; padding: 0 5px; font-size: 0.6rem; }
+
+/* ---------- Conversation UI ---------- */
+.msg-list-item.unread { background: rgba(37, 99, 235, 0.055); }
+.conversation-item-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.conversation-item-head strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-item-head > span { color: var(--muted); font-size: 0.68rem; flex-shrink: 0; }
+.conversation-preview { margin-top: 4px; color: var(--muted); font-size: 0.78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: calc(100% - 34px); }
+.conversation-unread { float: right; margin-top: -20px; min-width: 20px; height: 20px; display: grid; place-items: center; border-radius: 999px; background: var(--primary); color: #fff; font-size: 0.68rem; font-weight: 700; }
+.msg-bubbles { background: linear-gradient(180deg, rgba(248,250,255,0.75), rgba(255,255,255,0.2)); }
+.bubble { position: relative; min-width: 46px; max-width: 72%; line-height: 1.45; box-shadow: 0 1px 2px rgba(15,23,42,0.06); }
+.bubble-meta { display: block; margin-top: 5px; font-size: 0.65rem; opacity: 0.72; text-align: right; }

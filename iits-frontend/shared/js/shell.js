@@ -57,6 +57,7 @@
       { label: "AJK Roles", href: "/coach/roles.html", key: "roles", icon: "star" },
       { label: "Achievements", href: "/coach/achievements.html", key: "achievements", icon: "trophy" },
       { label: "Feedback", href: "/coach/feedback.html", key: "feedback", icon: "chat" },
+      { label: "Messages", href: "/coach/conversation.html", key: "conversation", icon: "chat" },
       { label: "Announcements", href: "/coach/announcements.html", key: "announcements", icon: "megaphone" },
       { label: "Profile", href: "/coach/profile.html", key: "profile", icon: "user" },
     ],
@@ -79,6 +80,7 @@
       { label: "Achievement Uploads", href: "/parent/achievement-certificates.html", key: "achievement-certificates", icon: "trophy" },
       { label: "PAJSK Report", href: "/parent/reports.html", key: "reports", icon: "chart" },
       { label: "Notifications", href: "/parent/notifications.html", key: "notifications", icon: "bell" },
+      { label: "Messages", href: "/parent/conversation.html", key: "conversation", icon: "chat" },
       { label: "Announcements", href: "/parent/announcements.html", key: "announcements", icon: "megaphone" },
       { label: "Profile", href: "/parent/profile.html", key: "profile", icon: "user" },
     ],
@@ -160,6 +162,25 @@
       const notifs = await IITS.api("/api/notifications");
       setBadge("notifications", notifs.filter(n => !n.is_read).length);
     } catch (e) { /* badges are best-effort */ }
+    try {
+      const conversations = await IITS.api("/api/messaging/conversations");
+      setBadge("conversation", conversations.reduce((total, c) => total + (c.unread_count || 0), 0));
+    } catch (e) { /* badges are best-effort */ }
+    try {
+      const announcements = await IITS.api("/api/announcements");
+      const active = document.body.dataset.active;
+      const user = IITS.getUser();
+      const key = `spark_seen_announcements_${user?.id || role}`;
+      let seen = [];
+      try { seen = JSON.parse(localStorage.getItem(key) || "[]"); } catch (e) { seen = []; }
+      if (active === "announcements") {
+        seen = announcements.map(a => a.id);
+        localStorage.setItem(key, JSON.stringify(seen));
+      } else {
+        const unread = announcements.filter(a => !seen.includes(a.id)).length;
+        setBadge("announcements", unread);
+      }
+    } catch (e) { /* badges are best-effort */ }
     if (role === "admin") {
       try {
         const pending = await IITS.api("/api/admin/certificates?status_filter=pending");
@@ -218,6 +239,7 @@
 
     if (!IITS.autosave) { try { await loadScript("/shared/js/autosave.js"); } catch (e) { /* autosave optional */ } }
     refreshBadges(role);
+    window.setInterval(() => refreshBadges(role), 5000);
     document.dispatchEvent(new CustomEvent("iits:shell-ready"));
   }
 
