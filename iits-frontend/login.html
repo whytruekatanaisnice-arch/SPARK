@@ -25,8 +25,9 @@
       <button class="btn btn-primary" type="submit" id="login-btn" style="width:100%;margin-top:6px;">Log in</button>
     </form>
     <p class="muted" style="margin-top:18px;font-size:0.78rem;text-align:center;">
-      Demo accounts: admin@iits.demo / coach@iits.demo / student@iits.demo / parent@iits.demo — see project README for passwords.
+      Demo accounts: admin@demo.spark / coach@demo.spark / student@demo.spark / parent@demo.spark — see project README for passwords.
     </p>
+    <p class="muted" id="connection-mode" style="margin-top:10px;font-size:0.78rem;text-align:center;" hidden></p>
   </div>
 </div>
 
@@ -43,6 +44,20 @@
   const form = document.getElementById("login-form");
   const errorBox = document.getElementById("auth-error");
   const btn = document.getElementById("login-btn");
+  fetch(window.IITS_API_BASE + "/health")
+    .then(response => response.ok ? response.json() : null)
+    .then(health => {
+      if (health && health.demo_fallback_active) {
+        const mode = document.getElementById("connection-mode");
+        mode.textContent = "Showcase mode: using local demo data because Supabase is unavailable.";
+        mode.hidden = false;
+      }
+    })
+    .catch(() => {
+      const mode = document.getElementById("connection-mode");
+      mode.textContent = "Could not check the API connection status.";
+      mode.hidden = false;
+    });
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();

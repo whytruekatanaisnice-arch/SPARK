@@ -9,7 +9,8 @@ Change them (generate hashes with `werkzeug.security.generate_password_hash`).
 - Face photos: `face_db/{IC}_{FULL_NAME}.jpg`
 - Log: `attendance_log.csv` (Timestamp, Student_IC, Student_Name, Teacher_Logged_In, PAJSK_Category, Club_Name)
 - Camera access needs `localhost` or HTTPS. Set `PAJSK_SECRET` for a stable session key.
-- First scan after startup/enrolment is slow while FaceNet512 loads and the index rebuilds.
+- First scan after startup can take longer while FaceNet512 weights download/load
+  and the face index is built. Later scans reuse the loaded model and index.
 
 ## SPARK session integration
 

@@ -55,3 +55,7 @@ class ClubOut(ORMBase):
 
 class AssignVenueRequest(BaseModel):
     venue_id: UUID
+
+
+class StudentClubInvite(BaseModel):
+    student_id: UUID

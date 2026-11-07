@@ -27,3 +27,17 @@ class LeaderboardEntry(BaseModel):
     achievement_score: float
     total_score: float
     rank: int
+
+
+class MonthlyClubLeaderboardEntry(LeaderboardEntry):
+    category: str
+
+
+class MonthlyCategoryLeaderboard(BaseModel):
+    category: str
+    top_clubs: list[MonthlyClubLeaderboardEntry]
+
+
+class MonthlyGamificationLeaderboard(BaseModel):
+    month: str
+    categories: list[MonthlyCategoryLeaderboard]

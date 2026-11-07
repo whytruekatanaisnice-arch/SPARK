@@ -35,6 +35,7 @@
         <div class="field"><label for="coach_id">Coach</label><select id="coach_id"><option value="">— None —</option></select></div>
       </div>
       <div class="field"><label for="venue_id">Venue</label><select id="venue_id"><option value="">— None —</option></select></div>
+      <p class="hint">A venue already used by another club of this category is unavailable. Clubs from different categories may share it.</p>
       <div class="field"><label for="description">Description</label><textarea id="description" rows="2"></textarea></div>
       <div class="field" id="active-field" style="display:none;">
         <label class="checkbox-row"><input type="checkbox" id="is_active"> <span style="font-weight:500;">Active</span></label>
@@ -79,11 +80,58 @@ function scheduleRowHtml() {
   </div>`;
 }
 
+function reindexScheduleRows() {
+  document.querySelectorAll("#schedule-rows .schedule-row").forEach((row, index) => {
+    row.querySelector(".sch-day").dataset.key = `schedule-${index}-day`;
+    row.querySelector(".sch-start").dataset.key = `schedule-${index}-start`;
+    row.querySelector(".sch-end").dataset.key = `schedule-${index}-end`;
+  });
+}
+
+function assignmentCategoryKey(category) {
+  const normalized = (category || "").trim().toLocaleLowerCase().replace(/\s+/g, " ");
+  if (normalized === "club and society") return "club & society";
+  if (normalized === "sports" || normalized === "sports and games") return "sports & games";
+  return normalized;
+}
+
+function updateAssignmentOptions() {
+  const clubId = document.getElementById("club-id").value;
+  const currentClub = clubsCache.find(club => club.id === clubId);
+  const category = assignmentCategoryKey(document.getElementById("category").value);
+  const selectedCoach = document.getElementById("coach_id").value || currentClub?.coach_id || "";
+  const selectedVenue = document.getElementById("venue_id").value || currentClub?.venue_id || "";
+  const clubsOfCategory = clubsCache.filter(club =>
+    club.is_active &&
+    club.id !== clubId &&
+    assignmentCategoryKey(club.category) === category
+  );
+  const assignedCoachIds = new Set(clubsOfCategory.map(club => club.coach_id).filter(Boolean));
+  const assignedVenueIds = new Set(clubsOfCategory.map(club => club.venue_id).filter(Boolean));
+  const coachAllowed = coaches.filter(coach =>
+    !assignedCoachIds.has(coach.id) ||
+    (coach.id === currentClub?.coach_id && assignmentCategoryKey(currentClub.category) === category)
+  );
+  const venueAllowed = venues.filter(venue =>
+    !assignedVenueIds.has(venue.id) ||
+    (venue.id === currentClub?.venue_id && assignmentCategoryKey(currentClub.category) === category)
+  );
+
+  const coachSelect = document.getElementById("coach_id");
+  coachSelect.replaceChildren(new Option("— None —", ""));
+  coachAllowed.forEach(coach => coachSelect.add(new Option(coach.full_name, coach.id)));
+  coachSelect.value = coachAllowed.some(coach => coach.id === selectedCoach) ? selectedCoach : "";
+
+  const venueSelect = document.getElementById("venue_id");
+  venueSelect.replaceChildren(new Option("— None —", ""));
+  venueAllowed.forEach(venue => venueSelect.add(new Option(venue.name, venue.id)));
+  venueSelect.value = venueAllowed.some(venue => venue.id === selectedVenue) ? selectedVenue : "";
+}
+
 async function loadLookups() {
   coaches = await IITS.api("/api/admin/users?role=coach");
   venues = await IITS.api("/api/admin/venues");
-  document.getElementById("coach_id").innerHTML = '<option value="">— None —</option>' + coaches.map(c => `<option value="${c.id}">${c.full_name}</option>`).join("");
-  document.getElementById("venue_id").innerHTML = '<option value="">— None —</option>' + venues.map(v => `<option value="${v.id}">${v.name}</option>`).join("");
+  updateAssignmentOptions();
 }
 
 function coachName(id) { const c = coaches.find(c => c.id === id); return c ? c.full_name : "Unassigned"; }
@@ -93,6 +141,7 @@ async function loadClubs() {
   const grid = document.getElementById("clubs-grid");
   try {
     clubsCache = await IITS.api("/api/clubs");
+    updateAssignmentOptions();
     if (!clubsCache.length) { grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;"><div class="title">No clubs yet</div>Create your first club to get started.</div>`; return; }
     grid.innerHTML = clubsCache.map(c => `
       <div class="card">
@@ -121,6 +170,7 @@ function editClub(id) {
   document.getElementById("venue_id").value = c.venue_id || "";
   document.getElementById("description").value = c.description || "";
   document.getElementById("is_active").checked = c.is_active;
+  updateAssignmentOptions();
   document.getElementById("active-field").style.display = "block";
   document.getElementById("schedule-section").style.display = "none";
   document.getElementById("edit-schedule-hint").style.display = "block";
@@ -143,6 +193,7 @@ function closeModal() {
   document.getElementById("club-form").reset();
   document.getElementById("club-id").value = "";
   document.getElementById("schedule-rows").innerHTML = scheduleRowHtml();
+  reindexScheduleRows();
   document.getElementById("modal-title").textContent = "New club";
   document.getElementById("save-btn").textContent = "Save club";
   document.getElementById("active-field").style.display = "none";
@@ -153,17 +204,42 @@ function closeModal() {
 
 document.addEventListener("iits:shell-ready", async () => {
   document.getElementById("schedule-rows").innerHTML = scheduleRowHtml();
+  reindexScheduleRows();
   await loadLookups();
   await loadClubs();
+  document.getElementById("category").addEventListener("change", updateAssignmentOptions);
 
-  document.getElementById("new-club-btn").addEventListener("click", () => { closeModal(); openModal(); modalDraft = IITS.draft.start("#club-form", "club-new"); });
+  document.getElementById("new-club-btn").addEventListener("click", () => {
+    closeModal();
+    updateAssignmentOptions();
+    openModal();
+    modalDraft = IITS.draft.start("#club-form", "club-new", {
+      restore(data) {
+        const rowNumbers = Object.keys(data)
+          .map(key => /^schedule-(\d+)-day$/.exec(key))
+          .filter(Boolean)
+          .map(match => Number(match[1]));
+        const rowCount = rowNumbers.length ? Math.max(...rowNumbers) + 1 : 1;
+        while (document.querySelectorAll("#schedule-rows .schedule-row").length < rowCount) {
+          document.getElementById("schedule-rows").insertAdjacentHTML("beforeend", scheduleRowHtml());
+        }
+        reindexScheduleRows();
+      },
+    });
+  });
   document.getElementById("modal-close").addEventListener("click", closeModal);
   document.getElementById("cancel-btn").addEventListener("click", closeModal);
   document.getElementById("add-schedule-row").addEventListener("click", () => {
     document.getElementById("schedule-rows").insertAdjacentHTML("beforeend", scheduleRowHtml());
+    reindexScheduleRows();
+    document.getElementById("name").dispatchEvent(new Event("input", { bubbles: true }));
   });
   document.getElementById("schedule-rows").addEventListener("click", (e) => {
-    if (e.target.classList.contains("remove-row")) e.target.closest(".schedule-row").remove();
+    if (e.target.classList.contains("remove-row")) {
+      e.target.closest(".schedule-row").remove();
+      reindexScheduleRows();
+      document.getElementById("name").dispatchEvent(new Event("input", { bubbles: true }));
+    }
   });
 
   document.getElementById("club-form").addEventListener("submit", async (e) => {

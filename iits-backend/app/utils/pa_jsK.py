@@ -9,6 +9,7 @@ Call `recalculate_and_store` after ANY of these events so the student's
   - attendance marked
   - AJK role assigned / removed
   - achievement recorded
+  - competition certificate approved
   - NILAM book logged
 """
 from uuid import UUID
@@ -17,6 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.achievement import Achievement, AchievementRank
+from app.models.achievement_certificate import CompetitionCertificate, CompetitionCertificateStatus
 from app.models.attendance import AttendanceRecord, AttendanceStatus
 from app.models.nilam import NilamRecord
 from app.models.pajsk import PajskConfig
@@ -41,7 +43,7 @@ async def calculate_pa_jsK(student_id: UUID, year: int, db: AsyncSession) -> dic
     Returns:
       {
         "role_points": int,          # sum of role_types.pajsk_points for student_roles in `year`
-        "achievement_points": int,   # sum of achievement_ranks.pajsk_points for achievements in `year`
+        "achievement_points": int,   # achievement ranks plus approved certificate scores in `year`
         "attendance_points": int,    # per-status count * config('attendance', status)
         "nilam_points": int,         # nilam_count * config('nilam', 'book_logged')
         "total": int
@@ -67,6 +69,15 @@ async def calculate_pa_jsK(student_id: UUID, year: int, db: AsyncSession) -> dic
         )
     )
     achievement_points = achievement_points_result.scalar_one()
+
+    certificate_points_result = await db.execute(
+        select(func.coalesce(func.sum(CompetitionCertificate.score), 0)).where(
+            CompetitionCertificate.student_id == student_id,
+            CompetitionCertificate.status == CompetitionCertificateStatus.APPROVED,
+            func.extract("year", CompetitionCertificate.event_date) == year,
+        )
+    )
+    achievement_points += certificate_points_result.scalar_one()
 
     # --- Attendance points (per status, since "present"/"late"/"excused" may carry different weight) ---
     from app.models.attendance import AttendanceSession  # local import to avoid circular import at module load

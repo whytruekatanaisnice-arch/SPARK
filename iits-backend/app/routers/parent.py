@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import demo_store
 from app.database import get_db
 from app.models.attendance import AttendanceRecord, AttendanceSession
 from app.models.notification import Notification
@@ -30,6 +31,24 @@ async def _assert_is_my_child(parent_id: UUID, student_id: UUID, db: AsyncSessio
 
 @router.get("/children")
 async def my_children(current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    if demo_store.is_enabled():
+        links = [
+            link for link in demo_store.collection("parent_student_links")
+            if link["parent_id"] == str(current_user.id)
+        ]
+        users = {user["id"]: user for user in demo_store.collection("users")}
+        return [
+            {
+                "student_id": link["student_id"],
+                "full_name": users[link["student_id"]]["full_name"],
+                "student_number": users[link["student_id"]].get("student_number"),
+                "class_name": users[link["student_id"]].get("class_name"),
+                "relationship": link.get("relationship_label"),
+            }
+            for link in links
+            if link["student_id"] in users
+        ]
+
     result = await db.execute(
         select(User, StudentProfile, ParentStudentLink.relationship_label)
         .join(StudentProfile, StudentProfile.user_id == User.id)
@@ -50,6 +69,9 @@ async def my_children(current_user: CurrentUser, db: AsyncSession = Depends(get_
 
 @router.get("/children/{student_id}/attendance")
 async def child_attendance(student_id: UUID, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    if demo_store.is_enabled():
+        await _assert_demo_child(current_user.id, student_id)
+        return []
     await _assert_is_my_child(current_user.id, student_id, db)
 
     result = await db.execute(
@@ -71,6 +93,23 @@ async def child_attendance(student_id: UUID, current_user: CurrentUser, db: Asyn
 
 @router.get("/children/{student_id}/feedback")
 async def child_feedback(student_id: UUID, current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    if demo_store.is_enabled():
+        await _assert_demo_child(current_user.id, student_id)
+        tasks = {item["id"]: item for item in demo_store.collection("tasks")}
+        submissions = {
+            item["id"]: item for item in demo_store.collection("submissions")
+            if item["student_id"] == str(student_id)
+        }
+        return [
+            {
+                "task_id": submissions[item["submission_id"]]["task_id"],
+                "comment": item.get("comment"),
+                "points_awarded": item.get("points_awarded"),
+            }
+            for item in demo_store.collection("feedback")
+            if item["submission_id"] in submissions
+            and submissions[item["submission_id"]]["task_id"] in tasks
+        ]
     await _assert_is_my_child(current_user.id, student_id, db)
 
     result = await db.execute(
@@ -87,10 +126,30 @@ async def child_feedback(student_id: UUID, current_user: CurrentUser, db: AsyncS
 
 @router.get("/children/{student_id}/pa_jsK", response_model=PajskBreakdown)
 async def child_pajsk(student_id: UUID, current_user: CurrentUser, year: int = None, db: AsyncSession = Depends(get_db)):
+    if demo_store.is_enabled():
+        await _assert_demo_child(current_user.id, student_id)
+        user = demo_store.find_user(str(student_id))
+        total = user.get("pajsk_points", 78) if user else 0
+        role_points, achievement_points, attendance_points = 25, 20, 23
+        return PajskBreakdown(
+            role_points=role_points,
+            achievement_points=achievement_points,
+            attendance_points=attendance_points,
+            nilam_points=max(0, total - role_points - achievement_points - attendance_points),
+            total=total,
+        )
     await _assert_is_my_child(current_user.id, student_id, db)
     year = year or date.today().year
     breakdown = await calculate_pa_jsK(student_id, year, db)
     return PajskBreakdown(**breakdown)
+
+
+async def _assert_demo_child(parent_id: UUID, student_id: UUID) -> None:
+    if not any(
+        link["parent_id"] == str(parent_id) and link["student_id"] == str(student_id)
+        for link in demo_store.collection("parent_student_links")
+    ):
+        raise HTTPException(status_code=403, detail="Not authorized to view this student")
 
 
 @router.get("/notifications", response_model=list[NotificationOut])

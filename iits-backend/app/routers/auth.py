@@ -1,8 +1,11 @@
 """Authentication: login, logout, current-user profile, password change."""
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import demo_store
 from app.database import get_db
 from app.models.user import User
 from app.schemas.auth import ChangePasswordRequest, LoginRequest, TokenResponse, UserOut
@@ -15,6 +18,13 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 @router.post("/login", response_model=TokenResponse)
 async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
+    if demo_store.is_enabled():
+        data = demo_store.authenticate(str(payload.email), payload.password)
+        if data is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+        token = create_access_token(UUID(data["id"]), data["role"])
+        return TokenResponse(access_token=token, user=UserOut.model_validate(data))
+
     result = await db.execute(select(User).where(User.email == payload.email))
     user = result.scalar_one_or_none()
 
@@ -46,6 +56,15 @@ async def change_password(
     current_user: CurrentUser,
     db: AsyncSession = Depends(get_db),
 ):
+    if payload.old_password == payload.new_password:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="New password must be different from the current password")
+    if demo_store.is_enabled():
+        user_id = str(current_user.id)
+        if not demo_store.check_password(user_id, payload.old_password):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Old password is incorrect")
+        demo_store.update_user(user_id, {"password": payload.new_password})
+        return Message(detail="Password updated")
+
     if not verify_password(payload.old_password, current_user.password_hash):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Old password is incorrect")
 
@@ -63,6 +82,12 @@ async def update_my_profile(payload: ProfileUpdate, current_user: CurrentUser, d
         if not name:
             raise HTTPException(status_code=400, detail="Name can't be empty")
         data["full_name"] = name
+    if demo_store.is_enabled():
+        updated = demo_store.update_user(str(current_user.id), data)
+        if updated is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        return UserOut.model_validate(updated)
+
     for field, value in data.items():
         setattr(current_user, field, value)
     await db.commit()

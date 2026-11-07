@@ -36,6 +36,13 @@ see the module guides:
 
 ## Run locally
 
+After the one-time setup, database configuration, and seed step below have
+completed, Windows users can start the API, PAJSK face service, and frontend
+together by double-clicking [`start-spark.bat`](./start-spark.bat) in the
+repository root. It opens a separate terminal for each service and opens the
+login page. Keep the terminals open while using SPARK; close them to stop the
+services. The script does not install dependencies or seed the database.
+
 ### 1. Configure and start the backend
 
 Follow the backend guide to create a Supabase project, set up the Python

@@ -1,0 +1,177 @@
+{
+  "users": [
+    {
+      "id": "10000000-0000-4000-8000-000000000001",
+      "email": "admin@demo.spark",
+      "password": "SparkAdmin123!",
+      "full_name": "Aina Rahman",
+      "role": "admin",
+      "phone": "+60 12-555 0101",
+      "avatar_url": null,
+      "is_active": true
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000002",
+      "email": "coach@demo.spark",
+      "password": "SparkCoach123!",
+      "full_name": "Daniel Lee",
+      "role": "coach",
+      "phone": "+60 12-555 0102",
+      "avatar_url": null,
+      "is_active": true
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000003",
+      "email": "student@demo.spark",
+      "password": "SparkStudent123!",
+      "full_name": "Mei Lin Tan",
+      "role": "student",
+      "phone": "+60 12-555 0103",
+      "avatar_url": null,
+      "is_active": true,
+      "student_number": "SPK2026001",
+      "class_name": "5 Bestari",
+      "pajsk_points": 78
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000004",
+      "email": "parent@demo.spark",
+      "password": "SparkParent123!",
+      "full_name": "Wei Ming Tan",
+      "role": "parent",
+      "phone": "+60 12-555 0104",
+      "avatar_url": null,
+      "is_active": true
+    }
+  ],
+  "clubs": [
+    {
+      "id": "20000000-0000-4000-8000-000000000001",
+      "name": "Robotics & Innovation",
+      "category": "Club & Society",
+      "description": "Design, build, and program robots while learning teamwork and creative problem-solving.",
+      "coach_id": "10000000-0000-4000-8000-000000000002",
+      "venue_id": null,
+      "is_active": true,
+      "schedules": [
+        {
+          "day_of_week": "WED",
+          "start_time": "14:30:00",
+          "end_time": "16:00:00"
+        }
+      ]
+    },
+    {
+      "id": "20000000-0000-4000-8000-000000000002",
+      "name": "Badminton Club",
+      "category": "Sports & Games",
+      "description": "Weekly practice focused on fitness, technique, and friendly competition.",
+      "coach_id": "10000000-0000-4000-8000-000000000002",
+      "venue_id": null,
+      "is_active": true,
+      "schedules": [
+        {
+          "day_of_week": "FRI",
+          "start_time": "15:00:00",
+          "end_time": "16:30:00"
+        }
+      ]
+    },
+    {
+      "id": "20000000-0000-4000-8000-000000000003",
+      "name": "Red Crescent Society",
+      "category": "Uniform Body",
+      "description": "Build leadership and first-aid skills through service and practical activities.",
+      "coach_id": null,
+      "venue_id": null,
+      "is_active": true,
+      "schedules": [
+        {
+          "day_of_week": "THU",
+          "start_time": "14:30:00",
+          "end_time": "16:00:00"
+        }
+      ]
+    }
+  ],
+  "memberships": [
+    {
+      "student_id": "10000000-0000-4000-8000-000000000003",
+      "club_id": "20000000-0000-4000-8000-000000000001",
+      "is_active": true
+    },
+    {
+      "student_id": "10000000-0000-4000-8000-000000000003",
+      "club_id": "20000000-0000-4000-8000-000000000002",
+      "is_active": true
+    }
+  ],
+  "parent_student_links": [
+    {
+      "parent_id": "10000000-0000-4000-8000-000000000004",
+      "student_id": "10000000-0000-4000-8000-000000000003",
+      "relationship_label": "Parent"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "30000000-0000-4000-8000-000000000001",
+      "club_id": "20000000-0000-4000-8000-000000000001",
+      "session_id": null,
+      "title": "Plan a school recycling robot",
+      "description": "Sketch a simple robot concept that can help sort recyclable materials. Include a labelled diagram and a short explanation.",
+      "due_date": "2027-01-15T16:00:00+08:00",
+      "created_by": "10000000-0000-4000-8000-000000000002",
+      "created_at": "2026-11-01T10:00:00+08:00"
+    },
+    {
+      "id": "30000000-0000-4000-8000-000000000002",
+      "club_id": "20000000-0000-4000-8000-000000000002",
+      "session_id": null,
+      "title": "Personal badminton skills reflection",
+      "description": "Write a short reflection on one skill you improved during this term.",
+      "due_date": "2027-01-20T16:00:00+08:00",
+      "created_by": "10000000-0000-4000-8000-000000000002",
+      "created_at": "2026-11-02T10:00:00+08:00"
+    }
+  ],
+  "announcements": [
+    {
+      "id": "40000000-0000-4000-8000-000000000001",
+      "title": "Welcome to the new activity term",
+      "body": "Registration is open for clubs and uniform bodies. Check your activity schedule and speak with your coach if you need help.",
+      "target_roles": null,
+      "club_id": null,
+      "created_by": "10000000-0000-4000-8000-000000000001",
+      "published_at": "2026-11-03T08:00:00+08:00"
+    },
+    {
+      "id": "40000000-0000-4000-8000-000000000002",
+      "title": "Robotics showcase preparation",
+      "body": "Robotics Club members: bring your project notes to Wednesday's session. Families are invited to the end-of-term showcase.",
+      "target_roles": [
+        "student",
+        "parent"
+      ],
+      "club_id": "20000000-0000-4000-8000-000000000001",
+      "created_by": "10000000-0000-4000-8000-000000000001",
+      "published_at": "2026-11-05T09:00:00+08:00"
+    }
+  ],
+  "submissions": [],
+  "feedback": [],
+  "venues": [
+    {
+      "id": "50000000-0000-4000-8000-000000000001",
+      "name": "Innovation Lab",
+      "capacity": 30,
+      "notes": "Level 2"
+    },
+    {
+      "id": "50000000-0000-4000-8000-000000000002",
+      "name": "Indoor Court",
+      "capacity": 24,
+      "notes": "Sports block"
+    }
+  ]
+}

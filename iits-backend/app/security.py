@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
+from app import demo_store
 from app.models.user import User, UserRole
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
@@ -59,6 +60,21 @@ async def get_current_user(
     user_id = payload.get("sub")
     if user_id is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
+
+    if demo_store.is_enabled():
+        data = demo_store.find_user(user_id)
+        if data is None or not data.get("is_active", True):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
+        return User(
+            id=UUID(data["id"]),
+            email=data["email"],
+            password_hash="",
+            full_name=data["full_name"],
+            role=UserRole(data["role"]),
+            phone=data.get("phone"),
+            avatar_url=data.get("avatar_url"),
+            is_active=data.get("is_active", True),
+        )
 
     result = await db.execute(select(User).where(User.id == UUID(user_id)))
     user = result.scalar_one_or_none()

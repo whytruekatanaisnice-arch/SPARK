@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.schemas.auth import UserOut
 
@@ -26,15 +26,44 @@ class UserCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
-    full_name: str | None = None
-    phone: str | None = None
-    avatar_url: str | None = None
+    full_name: str | None = Field(default=None, min_length=1, max_length=255)
+    email: EmailStr | None = None
+    phone: str | None = Field(default=None, max_length=50)
+    avatar_url: str | None = Field(default=None, max_length=500)
     is_active: bool | None = None
-    class_name: str | None = None
+    student_number: str | None = Field(default=None, min_length=1, max_length=50)
+    class_name: str | None = Field(default=None, max_length=50)
+    ic_number: str | None = Field(default=None, max_length=20)
+    staff_number: str | None = Field(default=None, max_length=50)
+    subject: str | None = Field(default=None, max_length=100)
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("Full name cannot be blank")
+        return value
+
+    @field_validator("phone", "student_number", "class_name", "ic_number", "staff_number", "subject")
+    @classmethod
+    def strip_optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            return None
+        return value
 
 
 class UserListItem(UserOut):
-    pass
+    student_number: str | None = None
+    class_name: str | None = None
+    ic_number: str | None = None
+    staff_number: str | None = None
+    subject: str | None = None
 
 
 class BulkImportResult(BaseModel):

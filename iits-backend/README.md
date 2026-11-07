@@ -184,6 +184,7 @@ Edit `iits-backend/.env` and set at least:
 ```dotenv
 DATABASE_URL=postgresql+asyncpg://USER:PASSWORD@HOST:PORT/postgres
 SUPABASE_URL=https://YOUR_PROJECT_ID.supabase.co
+DEMO_FALLBACK_ENABLED=True
 SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVICE_ROLE_KEY
 JWT_SECRET_KEY=REPLACE_WITH_A_LONG_RANDOM_SECRET
 ```
@@ -195,6 +196,17 @@ output into `JWT_SECRET_KEY`.
 Keep the `.env` file local. Do not commit real credentials. The remaining
 settings in `.env.example` have local-development defaults; see
 [Configuration reference](#configuration-reference).
+
+For a showcase when Supabase may be unreachable, set
+`DEMO_FALLBACK_ENABLED=True`. At API startup SPARK tests the database
+connection; if it fails, login, clubs, schedules, tasks, and announcements use
+the editable local [`demo_data.json`](./demo_data.json) file instead. When
+Supabase is reachable, the app continues using Supabase. JSON changes persist
+on the server that runs the backend and do not sync back to Supabase. Detection
+happens at API startup, so restart the backend after changing the network or
+setting. This is a demo fallback, not a production database or backup, and file
+uploads and other database-backed modules still require their configured
+services.
 
 ## Create tables and demo data
 
@@ -420,6 +432,7 @@ credentials in an insecure way.
 | Variable | Required | Purpose |
 |---|---:|---|
 | `DATABASE_URL` | Yes | Async PostgreSQL connection string using the `postgresql+asyncpg` scheme. |
+| `DEMO_FALLBACK_ENABLED` | No | When `True`, test Supabase connectivity at startup and use the local showcase JSON if unreachable; defaults to `False`. |
 | `SUPABASE_URL` | Yes | Supabase project URL. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes | Backend-only key used for Supabase Storage uploads. |
 | `SUPABASE_STORAGE_BUCKET` | No | Upload bucket name; defaults to `submissions`. |
@@ -453,6 +466,9 @@ unquoted placeholder text or accidental spaces around values.
 - Confirm the Supabase project is active and the database host, port, username,
   password, and database name are correct.
 - Confirm the connection string uses `postgresql+asyncpg://`.
+- For a showcase that must run without a database connection, set
+  `DEMO_FALLBACK_ENABLED=True` and restart the API. `/health` reports whether
+  `demo_fallback_active` is enabled. Demo logins are listed below.
 - If the direct connection is unreachable from your network, try the
   connection option recommended by Supabase for your environment (for example,
   its session pooler).
@@ -470,6 +486,18 @@ Confirm both development servers are running. The frontend API URL defaults
 to `http://localhost:8000`; see
 [`iits-frontend/README.md`](../iits-frontend/README.md) if your backend uses a
 different address.
+
+### Demo accounts for the local JSON fallback
+
+These accounts are for local showcase use only. Their passwords and all
+editable demo records are stored in `iits-backend/demo_data.json`.
+
+| Role | Email | Password |
+|---|---|---|
+| Admin | `admin@demo.spark` | `SparkAdmin123!` |
+| Coach | `coach@demo.spark` | `SparkCoach123!` |
+| Student | `student@demo.spark` | `SparkStudent123!` |
+| Parent | `parent@demo.spark` | `SparkParent123!` |
 
 ### File upload fails
 

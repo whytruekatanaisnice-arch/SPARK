@@ -21,9 +21,18 @@
     <div class="card">
       <h3>Change password</h3>
       <form id="password-form">
-        <div class="field"><label for="old_password">Current password</label><input type="password" id="old_password" required></div>
-        <div class="field"><label for="new_password">New password</label><input type="password" id="new_password" required minlength="6"></div>
-        <button type="submit" class="btn btn-secondary">Update password</button>
+        <div class="field"><label for="old_password">Current password</label><input type="password" id="old_password" autocomplete="current-password" required></div>
+        <div class="field"><label for="new_password">New password</label><input type="password" id="new_password" autocomplete="new-password" required minlength="12" maxlength="72" aria-describedby="password-requirements"></div>
+        <ul id="password-requirements" class="muted" style="font-size:0.85rem;padding-left:20px;">
+          <li data-password-requirement="length">[ ] At least 12 characters</li>
+          <li data-password-requirement="uppercase">[ ] An uppercase letter</li>
+          <li data-password-requirement="lowercase">[ ] A lowercase letter</li>
+          <li data-password-requirement="number">[ ] A number</li>
+          <li data-password-requirement="symbol">[ ] A symbol</li>
+        </ul>
+        <div class="field"><label for="confirm_password">Confirm new password</label><input type="password" id="confirm_password" autocomplete="new-password" required aria-describedby="password-confirmation-message"></div>
+        <p id="password-confirmation-message" class="muted" aria-live="polite" style="font-size:0.85rem;margin-top:-12px;"></p>
+        <button type="submit" class="btn btn-secondary" id="password-submit" disabled>Update password</button>
       </form>
     </div>
   </div>
@@ -32,6 +41,7 @@
 <script src="/shared/js/config.js"></script>
 <script src="/shared/js/toast.js"></script>
 <script src="/shared/js/api.js"></script>
+<script src="/shared/js/password-change.js"></script>
 <script src="/shared/js/shell.js"></script>
 <script>
 document.addEventListener("iits:shell-ready", async () => {
@@ -51,14 +61,7 @@ document.addEventListener("iits:shell-ready", async () => {
     },
   });
 
-  document.getElementById("password-form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    try {
-      await IITS.api("/api/auth/change-password", { method: "POST", body: { old_password: document.getElementById("old_password").value, new_password: document.getElementById("new_password").value } });
-      IITS.toast("Password updated", "success");
-      document.getElementById("password-form").reset();
-    } catch (err) { IITS.toast(err.message, "error"); }
-  });
+  IITS.initPasswordChange();
 });
 </script>
 </body>

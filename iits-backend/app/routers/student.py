@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import demo_store
 from app.database import get_db
 from app.models.achievement import Achievement
 from app.models.club import Club, ClubMembership, ClubSchedule
@@ -24,6 +25,16 @@ router = APIRouter(prefix="/api/student", tags=["student"], dependencies=[Depend
 
 @router.get("/clubs", response_model=list[ClubOut])
 async def my_clubs(current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    if demo_store.is_enabled():
+        club_ids = {
+            membership["club_id"]
+            for membership in demo_store.collection("memberships")
+            if membership["student_id"] == str(current_user.id) and membership.get("is_active", True)
+        }
+        return [
+            club for club in demo_store.collection("clubs")
+            if club["id"] in club_ids and club.get("is_active", True)
+        ]
     result = await db.execute(
         select(Club)
         .join(ClubMembership, ClubMembership.club_id == Club.id)
@@ -34,6 +45,22 @@ async def my_clubs(current_user: CurrentUser, db: AsyncSession = Depends(get_db)
 
 @router.get("/schedule")
 async def my_schedule(current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    if demo_store.is_enabled():
+        club_ids = {
+            membership["club_id"]
+            for membership in demo_store.collection("memberships")
+            if membership["student_id"] == str(current_user.id) and membership.get("is_active", True)
+        }
+        clubs = [club for club in demo_store.collection("clubs") if club["id"] in club_ids]
+        return [
+            {
+                "club_name": club["name"],
+                "club_id": club["id"],
+                **schedule,
+            }
+            for club in clubs
+            for schedule in club.get("schedules", [])
+        ]
     result = await db.execute(
         select(ClubSchedule, Club.name)
         .join(Club, Club.id == ClubSchedule.club_id)
@@ -54,12 +81,25 @@ async def my_schedule(current_user: CurrentUser, db: AsyncSession = Depends(get_
 
 @router.get("/role", response_model=list[StudentRoleOut])
 async def my_roles(current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    if demo_store.is_enabled():
+        return []
     result = await db.execute(select(StudentRole).where(StudentRole.student_id == current_user.id))
     return result.scalars().all()
 
 
 @router.get("/pa_jsK", response_model=PajskBreakdown)
 async def my_pajsk(current_user: CurrentUser, year: int = None, db: AsyncSession = Depends(get_db)):
+    if demo_store.is_enabled():
+        user = demo_store.find_user(str(current_user.id))
+        total = user.get("pajsk_points", 78) if user else 0
+        role_points, achievement_points, attendance_points = 25, 20, 23
+        return PajskBreakdown(
+            role_points=role_points,
+            achievement_points=achievement_points,
+            attendance_points=attendance_points,
+            nilam_points=max(0, total - role_points - achievement_points - attendance_points),
+            total=total,
+        )
     year = year or date.today().year
     breakdown = await calculate_pa_jsK(current_user.id, year, db)
     return PajskBreakdown(**breakdown)
@@ -67,6 +107,8 @@ async def my_pajsk(current_user: CurrentUser, year: int = None, db: AsyncSession
 
 @router.get("/achievements", response_model=list[AchievementOut])
 async def my_achievements(current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    if demo_store.is_enabled():
+        return []
     result = await db.execute(select(Achievement).where(Achievement.student_id == current_user.id))
     return result.scalars().all()
 
@@ -76,6 +118,13 @@ async def update_profile(payload: UserUpdate, current_user: CurrentUser, db: Asy
     data = payload.model_dump(exclude_unset=True)
     class_name = data.pop("class_name", None)
     data.pop("is_active", None)  # students may not deactivate themselves
+    if demo_store.is_enabled():
+        if class_name is not None:
+            data["class_name"] = class_name
+        updated = demo_store.update_user(str(current_user.id), data)
+        if updated is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        return UserOut.model_validate(updated)
 
     for field, value in data.items():
         setattr(current_user, field, value)
@@ -93,6 +142,18 @@ async def update_profile(payload: UserUpdate, current_user: CurrentUser, db: Asy
 
 @router.get("/profile")
 async def my_profile(current_user: CurrentUser, db: AsyncSession = Depends(get_db)):
+    if demo_store.is_enabled():
+        user = demo_store.find_user(str(current_user.id))
+        if user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        return {
+            "id": user["id"],
+            "full_name": user["full_name"],
+            "email": user["email"],
+            "phone": user.get("phone"),
+            "student_number": user.get("student_number"),
+            "class_name": user.get("class_name"),
+        }
     profile = (await db.execute(select(StudentProfile).where(StudentProfile.user_id == current_user.id))).scalar_one_or_none()
     return {
         "id": str(current_user.id),

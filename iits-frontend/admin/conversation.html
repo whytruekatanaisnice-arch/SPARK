@@ -15,16 +15,21 @@
   .bubble { max-width: 70%; padding: 9px 13px; border-radius: 12px; font-size: 0.86rem; background: #F0F3FA; align-self: flex-start; }
   .bubble.mine { background: var(--primary); color: #fff; align-self: flex-end; }
   .msg-compose { border-top: 1px solid var(--border); padding: 12px; display: flex; gap: 8px; }
+  .msg-new { border-bottom: 1px solid var(--border); padding: 12px; display: flex; gap: 8px; }
+  .msg-new select { flex: 1; min-width: 0; }
   @media (max-width: 760px) { .msg-layout { flex-direction: column; height: auto; } .msg-list { width: 100%; max-height: 220px; } }
 </style>
 </head>
 <body data-role="admin" data-active="conversation" data-title="Messages">
 <div id="page-root">
 
-  <div class="page-head"><div><h1>Messages</h1><p>Direct messages between admin, coaches, students, and parents.</p></div></div>
+  <div class="page-head"><div><h1>Messages</h1><p>Admin messages are restricted to coaches.</p></div></div>
 
   <div class="msg-layout">
-    <div class="msg-list" id="conv-list"><div class="loading-row"><span class="spinner"></span> Loading…</div></div>
+    <div class="msg-list">
+      <div class="msg-new"><select id="contact-select"><option>Loading contacts…</option></select><button class="btn btn-primary" id="new-conversation-btn" disabled>New</button></div>
+      <div id="conv-list"><div class="loading-row"><span class="spinner"></span> Loading…</div></div>
+    </div>
     <div class="msg-thread">
       <div class="msg-bubbles" id="msg-bubbles"><div class="empty-state" style="margin:auto;"><div class="title">Select a conversation</div>Pick a thread on the left, or start a new one.</div></div>
       <div class="msg-compose" id="msg-compose" style="display:none;">
@@ -39,52 +44,9 @@
 <script src="/shared/js/toast.js"></script>
 <script src="/shared/js/api.js"></script>
 <script src="/shared/js/shell.js"></script>
+<script src="/shared/js/conversation.js"></script>
 <script>
-let currentConversationId = null;
-
-async function loadConversations() {
-  const list = document.getElementById("conv-list");
-  try {
-    const convs = await IITS.api("/api/messaging/conversations");
-    if (!convs.length) { list.innerHTML = `<div class="empty-state"><div class="title">No conversations</div>Messages you send or receive will appear here.</div>`; return; }
-    list.innerHTML = convs.map(c => `<div class="msg-list-item" data-id="${c.id}">${c.subject || "(no subject)"}</div>`).join("");
-    list.querySelectorAll(".msg-list-item").forEach(el => el.addEventListener("click", () => openConversation(el.dataset.id, el)));
-  } catch (e) { IITS.toast(e.message, "error"); }
-}
-
-async function openConversation(id, el) {
-  currentConversationId = id;
-  document.querySelectorAll(".msg-list-item").forEach(x => x.classList.remove("active"));
-  if (el) el.classList.add("active");
-  document.getElementById("msg-compose").style.display = "flex";
-  const bubbles = document.getElementById("msg-bubbles");
-  bubbles.innerHTML = `<div class="loading-row"><span class="spinner"></span> Loading messages…</div>`;
-  try {
-    const messages = await IITS.api(`/api/messaging/conversations/${id}/messages`);
-    const me = IITS.getUser();
-    bubbles.innerHTML = messages.length
-      ? messages.map(m => `<div class="bubble ${m.sender_id === me.id ? "mine" : ""}">${m.body}</div>`).join("")
-      : `<div class="empty-state" style="margin:auto;"><div class="title">No messages yet</div>Say hello below.</div>`;
-    bubbles.scrollTop = bubbles.scrollHeight;
-  } catch (e) { IITS.toast(e.message, "error"); }
-}
-
-document.addEventListener("iits:shell-ready", () => {
-  loadConversations();
-  document.getElementById("send-btn").addEventListener("click", sendMessage);
-  document.getElementById("msg-input").addEventListener("keydown", (e) => { if (e.key === "Enter") sendMessage(); });
-});
-
-async function sendMessage() {
-  const input = document.getElementById("msg-input");
-  const body = input.value.trim();
-  if (!body || !currentConversationId) return;
-  try {
-    await IITS.api(`/api/messaging/conversations/${currentConversationId}/messages?body=${encodeURIComponent(body)}`, { method: "POST" });
-    input.value = "";
-    openConversation(currentConversationId);
-  } catch (e) { IITS.toast(e.message, "error"); }
-}
+document.addEventListener("iits:shell-ready", () => SPARKConversation.init());
 </script>
 </body>
 </html>

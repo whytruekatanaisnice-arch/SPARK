@@ -6,6 +6,7 @@ import hmac
 import json
 import os
 import re
+import sys
 import threading
 from datetime import datetime, timedelta
 from functools import wraps
@@ -16,6 +17,9 @@ from dotenv import load_dotenv
 from flask import (Flask, jsonify, redirect, render_template, request,
                    session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(errors="backslashreplace")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, "..", ".env"))
@@ -28,7 +32,7 @@ LOG_FILE = os.path.join(BASE_DIR, "attendance_log.csv")
 COACH_FILE = os.path.join(BASE_DIR, "coaches.json")
 ROSTER_FILE = os.path.join(BASE_DIR, "students.csv")        # IC,Name,Class (optional import)
 MANUAL_AUDIT_FILE = os.path.join(BASE_DIR, "manual_entries_audit.csv")
-MODEL_NAME = "FaceNet512"
+MODEL_NAME = "Facenet512"
 DUPLICATE_WINDOW = timedelta(seconds=60)
 CATEGORIES = ["Sukan/Permainan", "Kelab/Persatuan", "Unit Beruniform"]
 CSV_HEADER = ["Timestamp", "Student_IC", "Student_Name",
@@ -139,7 +143,7 @@ def find_face_identity(frame):
 
     with face_lock:
         results = DeepFace.find(img_path=frame, db_path=FACE_DIR,
-                                model_name=MODEL_NAME, enforce_detection=True)
+                                model_name=MODEL_NAME, enforce_detection=True, silent=True)
 
     best = None
     for df in results or []:
@@ -307,8 +311,11 @@ def internal_enroll():
     img = decode_image(data.get("image"))
     if img is None:
         return jsonify(status="error", message="Could not read the camera image."), 400
+    from deepface.modules.exceptions import FaceNotDetected
+
     try:
         from deepface import DeepFace
+
         with face_lock:
             faces = DeepFace.extract_faces(img_path=img, enforce_detection=True)
             if len(faces) != 1:
@@ -319,7 +326,7 @@ def internal_enroll():
             if not cv2.imwrite(os.path.join(FACE_DIR, filename), img, [cv2.IMWRITE_JPEG_QUALITY, 95]):
                 return jsonify(status="error", message="Could not save the face photo."), 500
             clear_index_cache()
-    except ValueError:
+    except FaceNotDetected:
         return jsonify(status="error", message="No clear face found. Face the camera in good light."), 422
     except Exception:
         app.logger.exception("Face enrollment failed")
@@ -368,11 +375,13 @@ def internal_recognize():
     frame = decode_image(data.get("image"))
     if frame is None:
         return jsonify(status="error", message="Could not read the camera image."), 400
+    from deepface.modules.exceptions import FaceNotDetected
+
     try:
         identity = find_face_identity(frame)
-    except ValueError as exc:
+    except FaceNotDetected as exc:
         app.logger.info("No recognizable face in frame: %s", exc)
-        return jsonify(status="unknown")
+        return jsonify(status="not_detected")
     except Exception:
         app.logger.exception("Face recognition request failed")
         return jsonify(status="error", message="Face recognition failed."), 503

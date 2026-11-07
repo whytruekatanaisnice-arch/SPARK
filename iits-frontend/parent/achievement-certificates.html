@@ -9,7 +9,7 @@
 <body data-role="parent" data-active="achievement-certificates" data-title="PAJSK Certificates" data-certificate-workflow="submission">
 <div id="page-root">
   <div class="page-head">
-    <div><h1>Competition certificates</h1><p>Submit your child's competition certificate for PAJSK review. Scores count only after school approval.</p></div>
+    <div><h1>Competition certificates</h1><p>Submit your child's competition certificate for PAJSK review. Scores count only after admin approval.</p></div>
   </div>
   <div class="field" id="certificate-child-wrap" style="max-width:360px;" hidden>
     <label for="certificate-child">Child</label><select id="certificate-child"></select>
@@ -24,7 +24,7 @@
           <input id="certificate-file" type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png">
         </div>
         <label class="flex gap-12" style="align-items:flex-start;margin:12px 0;">
-          <input id="ocr-consent" type="checkbox" required style="margin-top:4px;">
+          <input id="ocr-consent" type="checkbox" data-no-draft="true" required style="margin-top:4px;">
           <span>I understand this certificate will be sent to OCR.space for text extraction.</span>
         </label>
         <button class="btn btn-secondary" id="run-ocr" type="button">Upload and extract certificate text</button>
@@ -44,7 +44,7 @@
         <div class="field"><label for="placement">Placement (if ranked)</label><select id="placement" name="placement" required></select></div>
         <div class="card" id="score-preview" aria-live="polite" style="margin:12px 0;">Choose a level and participation type to preview points.</div>
         <label class="flex gap-12" style="align-items:flex-start;margin:14px 0;">
-          <input id="confirmed-details" name="confirmed_details" type="checkbox" required style="margin-top:4px;">
+          <input id="confirmed-details" name="confirmed_details" type="checkbox" data-no-draft="true" required style="margin-top:4px;">
           <span>I checked every field against the original certificate and confirm the student, event, date, organizer, level, participation category, and placement are correct.</span>
         </label>
         <button class="btn btn-primary" type="submit">Submit for school approval</button>

@@ -1,8 +1,14 @@
 """FastAPI application entry point — mounts all routers."""
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import settings
+from app.database import engine
+from app.demo_store import set_fallback_active
 from app.routers import (
     achievement_certificates, admin, announcements, attendance, auth, certificates,
     clubs, coach, drafts, messaging, nilam, notifications, parent, reports, segak,
@@ -14,6 +20,7 @@ app = FastAPI(
     description="Smart PAJSK & Activity Automation System for co-curricular clubs, attendance, AJK roles, achievements, NILAM, and PAJSK scoring.",
     version="1.0.0",
 )
+logger = logging.getLogger(__name__)
 
 app.add_middleware(
     CORSMiddleware,
@@ -62,9 +69,35 @@ app.include_router(achievement_certificates.scoring_router)
 app.include_router(drafts.router)
 
 
+@app.on_event("startup")
+async def check_database_connection():
+    if not settings.DEMO_FALLBACK_ENABLED:
+        set_fallback_active(False)
+        return
+
+    try:
+        async with engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
+    except (SQLAlchemyError, OSError, TimeoutError) as exc:
+        set_fallback_active(True)
+        logger.warning(
+            "Supabase database is unavailable; using local JSON demo data: %s",
+            exc,
+        )
+    else:
+        set_fallback_active(False)
+        logger.info("Supabase database is available; using the configured database.")
+
+
 @app.get("/health", tags=["health"])
 async def health_check():
-    return {"status": "ok", "app": settings.APP_NAME}
+    from app import demo_store
+
+    return {
+        "status": "ok",
+        "app": settings.APP_NAME,
+        "demo_fallback_active": demo_store.is_enabled(),
+    }
 
 
 @app.get("/", tags=["health"])

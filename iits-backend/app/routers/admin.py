@@ -5,23 +5,34 @@ import logging
 import re
 import secrets
 import uuid
-from datetime import date
+from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import demo_store
 from app.database import get_db
 from app.config import settings
 from app.models.attendance import AttendanceRecord, AttendanceSession, AttendanceStatus
+from app.models.achievement import Achievement
 from app.models.club import Club, ClubMembership
 from app.models.competition import InterClubCompetition
+from app.models.notification import Notification
 from app.models.task import Submission, Task
 from app.models.user import CoachProfile, ParentStudentLink, StudentProfile, User, UserRole
 from app.schemas.common import Message
 from app.schemas.competition import CompetitionOut, CompetitionUpdate
-from app.schemas.report import DashboardStats, LeaderboardEntry
+from app.schemas.club import StudentClubInvite
+from app.schemas.report import (
+    DashboardStats,
+    LeaderboardEntry,
+    MonthlyCategoryLeaderboard,
+    MonthlyClubLeaderboardEntry,
+    MonthlyGamificationLeaderboard,
+)
 from app.schemas.attendance import FaceEnrollmentRequest
 from app.schemas.user import BulkImportResult, UserCreate, UserListItem, UserUpdate
 from app.security import CurrentUser, hash_password, require_admin
@@ -73,13 +84,37 @@ async def _face_service_request(path: str, *, method: str = "GET", payload: dict
 
 @router.get("/users", response_model=list[UserListItem])
 async def list_users(role: str | None = None, q: str | None = None, db: AsyncSession = Depends(get_db)):
-    stmt = select(User)
+    if demo_store.is_enabled():
+        users = [demo_store.public_user(user) for user in demo_store.collection("users")]
+        if role:
+            users = [user for user in users if user["role"] == role]
+        if q:
+            query = q.casefold()
+            users = [
+                user for user in users
+                if query in user["full_name"].casefold() or query in user["email"].casefold()
+            ]
+        return sorted(users, key=lambda user: user["full_name"])
+
+    stmt = select(User, StudentProfile, CoachProfile).outerjoin(
+        StudentProfile, StudentProfile.user_id == User.id
+    ).outerjoin(CoachProfile, CoachProfile.user_id == User.id)
     if role:
         stmt = stmt.where(User.role == role)
     if q:
         stmt = stmt.where(User.full_name.ilike(f"%{q}%") | User.email.ilike(f"%{q}%"))
     result = await db.execute(stmt.order_by(User.full_name))
-    return result.scalars().all()
+    return [
+        UserListItem.model_validate({
+            **UserListItem.model_validate(user).model_dump(),
+            "student_number": student_profile.student_number if student_profile else None,
+            "class_name": student_profile.class_name if student_profile else None,
+            "ic_number": student_profile.ic_number if student_profile else None,
+            "staff_number": coach_profile.staff_number if coach_profile else None,
+            "subject": coach_profile.subject if coach_profile else None,
+        })
+        for user, student_profile, coach_profile in result.all()
+    ]
 
 
 @router.post("/users", response_model=UserListItem, status_code=status.HTTP_201_CREATED)
@@ -129,10 +164,24 @@ async def create_user(payload: UserCreate, db: AsyncSession = Depends(get_db)):
 
 @router.get("/users/{user_id}", response_model=UserListItem)
 async def get_user(user_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    user = await db.get(User, user_id)
-    if not user:
+    result = await db.execute(
+        select(User, StudentProfile, CoachProfile)
+        .outerjoin(StudentProfile, StudentProfile.user_id == User.id)
+        .outerjoin(CoachProfile, CoachProfile.user_id == User.id)
+        .where(User.id == user_id)
+    )
+    row = result.one_or_none()
+    if row is None:
         raise HTTPException(status_code=404, detail="User not found")
-    return user
+    user, student_profile, coach_profile = row
+    return UserListItem.model_validate({
+        **UserListItem.model_validate(user).model_dump(),
+        "student_number": student_profile.student_number if student_profile else None,
+        "class_name": student_profile.class_name if student_profile else None,
+        "ic_number": student_profile.ic_number if student_profile else None,
+        "staff_number": coach_profile.staff_number if coach_profile else None,
+        "subject": coach_profile.subject if coach_profile else None,
+    })
 
 
 @router.patch("/users/{user_id}", response_model=UserListItem)
@@ -142,19 +191,95 @@ async def update_user(user_id: uuid.UUID, payload: UserUpdate, db: AsyncSession 
         raise HTTPException(status_code=404, detail="User not found")
 
     data = payload.model_dump(exclude_unset=True)
-    class_name = data.pop("class_name", None)
+    if "email" in data and data["email"] != user.email:
+        existing = await db.execute(select(User.id).where(User.email == data["email"], User.id != user_id))
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail="Email already in use")
+
+    profile_fields = {
+        "student_number": "student_number",
+        "class_name": "class_name",
+        "ic_number": "ic_number",
+    }
+    coach_fields = {"staff_number": "staff_number", "subject": "subject"}
+    profile_data = {field: data.pop(field) for field in profile_fields if field in data}
+    coach_data = {field: data.pop(field) for field in coach_fields if field in data}
     for field, value in data.items():
         setattr(user, field, value)
 
-    if class_name is not None and user.role == UserRole.STUDENT:
-        profile = await db.execute(select(StudentProfile).where(StudentProfile.user_id == user.id))
-        profile = profile.scalar_one_or_none()
-        if profile:
-            profile.class_name = class_name
+    if profile_data and user.role == UserRole.STUDENT:
+        profile_result = await db.execute(select(StudentProfile).where(StudentProfile.user_id == user.id))
+        profile = profile_result.scalar_one_or_none()
+        if profile is None:
+            raise HTTPException(status_code=409, detail="Student profile is missing")
+        if "student_number" in profile_data:
+            if profile_data["student_number"] is None:
+                raise HTTPException(status_code=422, detail="Student number cannot be blank")
+            existing = await db.execute(
+                select(StudentProfile.user_id).where(
+                    StudentProfile.student_number == profile_data["student_number"],
+                    StudentProfile.user_id != user.id,
+                )
+            )
+            if existing.scalar_one_or_none():
+                raise HTTPException(status_code=409, detail="Student number already in use")
+        for field, value in profile_data.items():
+            setattr(profile, field, value)
+
+    if coach_data and user.role == UserRole.COACH:
+        coach_result = await db.execute(select(CoachProfile).where(CoachProfile.user_id == user.id))
+        coach_profile = coach_result.scalar_one_or_none()
+        if coach_profile is None:
+            raise HTTPException(status_code=409, detail="Coach profile is missing")
+        for field, value in coach_data.items():
+            setattr(coach_profile, field, value)
 
     await db.commit()
-    await db.refresh(user)
-    return user
+    return await get_user(user_id, db)
+
+
+@router.post("/clubs/{club_id}/invite", response_model=Message, status_code=status.HTTP_201_CREATED)
+async def invite_student_to_club(
+    club_id: uuid.UUID,
+    payload: StudentClubInvite,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+):
+    club = await db.get(Club, club_id)
+    if club is None or not club.is_active:
+        raise HTTPException(status_code=404, detail="Active club not found")
+
+    student_result = await db.execute(
+        select(User)
+        .join(StudentProfile, StudentProfile.user_id == User.id)
+        .where(User.id == payload.student_id, User.role == UserRole.STUDENT, User.is_active.is_(True))
+    )
+    student = student_result.scalar_one_or_none()
+    if student is None:
+        raise HTTPException(status_code=404, detail="Active student not found")
+
+    membership_result = await db.execute(
+        select(ClubMembership).where(
+            ClubMembership.club_id == club.id,
+            ClubMembership.student_id == student.id,
+        )
+    )
+    membership = membership_result.scalar_one_or_none()
+    if membership and membership.is_active:
+        raise HTTPException(status_code=409, detail="Student is already a member of this club")
+    if membership:
+        membership.is_active = True
+    else:
+        db.add(ClubMembership(club_id=club.id, student_id=student.id, is_active=True))
+
+    db.add(Notification(
+        user_id=student.id,
+        title=f"Added to {club.name}",
+        body=f"An administrator added you to {club.name}. Open My Clubs to view the club and its schedule.",
+        created_by=current_user.id,
+    ))
+    await db.commit()
+    return Message(detail=f"{student.full_name} was added to {club.name} and notified.")
 
 
 @router.delete("/users/{user_id}", response_model=Message)
@@ -307,6 +432,21 @@ async def enroll_student_face(
 
 @router.get("/dashboard", response_model=DashboardStats)
 async def dashboard(db: AsyncSession = Depends(get_db)):
+    if demo_store.is_enabled():
+        users = demo_store.collection("users")
+        clubs = demo_store.collection("clubs")
+        tasks = demo_store.collection("tasks")
+        submitted_task_ids = {
+            submission["task_id"] for submission in demo_store.collection("submissions")
+        }
+        return DashboardStats(
+            total_students=sum(user["role"] == UserRole.STUDENT.value for user in users),
+            total_coaches=sum(user["role"] == UserRole.COACH.value for user in users),
+            total_clubs=sum(club.get("is_active", True) for club in clubs),
+            attendance_today=0,
+            pending_tasks=sum(task["id"] not in submitted_task_ids for task in tasks),
+        )
+
     total_students = (await db.execute(select(func.count()).select_from(User).where(User.role == UserRole.STUDENT))).scalar_one()
     total_coaches = (await db.execute(select(func.count()).select_from(User).where(User.role == UserRole.COACH))).scalar_one()
     total_clubs = (await db.execute(select(func.count()).select_from(Club).where(Club.is_active == True))).scalar_one()  # noqa: E712
@@ -340,6 +480,130 @@ async def dashboard(db: AsyncSession = Depends(get_db)):
 
 
 # ---------------- Gamification ----------------
+
+_GAMIFICATION_TIMEZONE = ZoneInfo("Asia/Kuala_Lumpur")
+_GAMIFICATION_CATEGORIES = (
+    ("Uniform Body", "uniform body"),
+    ("Club & Society", "club & society"),
+    ("Sports & Games", "sports & games"),
+)
+
+
+def _gamification_category_key(category: str | None) -> str:
+    normalized = " ".join((category or "").casefold().split())
+    aliases = {
+        "club and society": "club & society",
+        "sports": "sports & games",
+        "sports and games": "sports & games",
+    }
+    return aliases.get(normalized, normalized)
+
+
+@router.get("/monthly-gamification", response_model=MonthlyGamificationLeaderboard)
+async def monthly_gamification_leaderboard(
+    month: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    month_value = month or datetime.now(_GAMIFICATION_TIMEZONE).strftime("%Y-%m")
+    try:
+        start_date = date.fromisoformat(f"{month_value}-01")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Month must use YYYY-MM format") from exc
+    if start_date.strftime("%Y-%m") != month_value:
+        raise HTTPException(status_code=422, detail="Month must use YYYY-MM format")
+
+    if start_date.month == 12:
+        next_month = date(start_date.year + 1, 1, 1)
+    else:
+        next_month = date(start_date.year, start_date.month + 1, 1)
+    start_datetime = datetime.combine(start_date, time.min, tzinfo=_GAMIFICATION_TIMEZONE)
+    end_datetime = datetime.combine(next_month, time.min, tzinfo=_GAMIFICATION_TIMEZONE)
+    end_date = next_month - timedelta(days=1)
+
+    clubs = (
+        await db.execute(select(Club).where(Club.is_active.is_(True)))
+    ).scalars().all()
+    club_ids = [club.id for club in clubs]
+    scores = {
+        club.id: {"attendance": 0, "tasks": 0, "achievements": 0}
+        for club in clubs
+    }
+
+    if club_ids:
+        attendance_rows = await db.execute(
+            select(AttendanceSession.club_id, func.count(AttendanceRecord.id))
+            .join(AttendanceRecord, AttendanceRecord.session_id == AttendanceSession.id)
+            .where(
+                AttendanceSession.club_id.in_(club_ids),
+                AttendanceSession.session_date.between(start_date, end_date),
+                AttendanceRecord.status == AttendanceStatus.PRESENT,
+            )
+            .group_by(AttendanceSession.club_id)
+        )
+        for club_id, count in attendance_rows.all():
+            scores[club_id]["attendance"] = count
+
+        task_rows = await db.execute(
+            select(Task.club_id, func.count(func.distinct(Submission.id)))
+            .join(Submission, Submission.task_id == Task.id)
+            .where(
+                Task.club_id.in_(club_ids),
+                Submission.submitted_at >= start_datetime,
+                Submission.submitted_at < end_datetime,
+            )
+            .group_by(Task.club_id)
+        )
+        for club_id, count in task_rows.all():
+            scores[club_id]["tasks"] = count
+
+        achievement_rows = await db.execute(
+            select(Achievement.club_id, func.count(Achievement.id))
+            .where(
+                Achievement.club_id.in_(club_ids),
+                or_(
+                    Achievement.event_date.between(start_date, end_date),
+                    and_(
+                        Achievement.event_date.is_(None),
+                        Achievement.created_at >= start_datetime,
+                        Achievement.created_at < end_datetime,
+                    ),
+                ),
+            )
+            .group_by(Achievement.club_id)
+        )
+        for club_id, count in achievement_rows.all():
+            scores[club_id]["achievements"] = count
+
+    category_results = []
+    for category, category_key in _GAMIFICATION_CATEGORIES:
+        entries = []
+        for club in clubs:
+            if _gamification_category_key(club.category) != category_key:
+                continue
+            attendance_score = scores[club.id]["attendance"]
+            task_score = scores[club.id]["tasks"]
+            achievement_score = scores[club.id]["achievements"]
+            entries.append(MonthlyClubLeaderboardEntry(
+                club_id=club.id,
+                club_name=club.name,
+                category=category,
+                attendance_score=float(attendance_score),
+                task_score=float(task_score),
+                achievement_score=float(achievement_score),
+                total_score=float(attendance_score + task_score + achievement_score * 2),
+                rank=0,
+            ))
+        entries.sort(key=lambda entry: (-entry.total_score, entry.club_name.casefold()))
+        category_results.append(MonthlyCategoryLeaderboard(
+            category=category,
+            top_clubs=[entry.model_copy(update={"rank": rank}) for rank, entry in enumerate(entries[:3], start=1)],
+        ))
+
+    return MonthlyGamificationLeaderboard(
+        month=start_date.strftime("%Y-%m"),
+        categories=category_results,
+    )
+
 
 @router.get("/inter-club-competitions", response_model=list[CompetitionOut])
 async def list_competitions(db: AsyncSession = Depends(get_db)):

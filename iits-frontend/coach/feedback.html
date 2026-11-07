@@ -20,6 +20,7 @@
 <script src="/shared/js/shell.js"></script>
 <script>
 function isImage(url) { return /\.(png|jpe?g|gif|webp)$/i.test(url || ""); }
+const feedbackDrafts = new Map();
 
 async function loadSubmissions() {
   const params = new URLSearchParams(location.search);
@@ -44,11 +45,17 @@ async function loadSubmissions() {
         </div>
         <div class="divider"></div>
         <div class="form-row" style="margin:0;align-items:flex-end;">
-          <div class="field" style="margin:0;flex:2;"><textarea placeholder="Feedback comment…" class="fb-comment" rows="2"></textarea></div>
-          <div class="field" style="margin:0;max-width:110px;"><input type="number" class="fb-points" placeholder="Points"></div>
+          <div class="field" style="margin:0;flex:2;"><textarea id="fb-comment-${s.id}" placeholder="Feedback comment…" class="fb-comment" rows="2"></textarea></div>
+          <div class="field" style="margin:0;max-width:110px;"><input id="fb-points-${s.id}" type="number" class="fb-points" placeholder="Points"></div>
           <button class="btn btn-primary" onclick="sendFeedback('${s.id}')">Send</button>
         </div>
       </div>`).join("");
+    feedbackDrafts.forEach(draft => draft.stop());
+    feedbackDrafts.clear();
+    subs.forEach(submission => {
+      const card = document.getElementById(`sub-${submission.id}`);
+      feedbackDrafts.set(submission.id, IITS.draft.start(card, `coach-feedback:${taskId}:${submission.id}`));
+    });
   } catch (e) { IITS.toast(e.message, "error"); }
 }
 
@@ -59,6 +66,10 @@ async function sendFeedback(submissionId) {
   try {
     await IITS.api("/api/coach/feedback", { method: "POST", body: { submission_id: submissionId, comment: comment || null, points_awarded: pointsRaw ? parseInt(pointsRaw) : null } });
     IITS.toast("Feedback sent", "success");
+    const draft = feedbackDrafts.get(submissionId);
+    if (draft) { draft.clear(); feedbackDrafts.delete(submissionId); }
+    card.querySelector(".fb-comment").value = "";
+    card.querySelector(".fb-points").value = "";
   } catch (e) { IITS.toast(e.message, "error"); }
 }
 
