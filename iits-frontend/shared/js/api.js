@@ -54,8 +54,10 @@ window.IITS = window.IITS || {};
     if (res.status === 401) {
       IITS.clearToken();
       IITS.clearUser();
-      if (!location.pathname.endsWith("login.html")) window.location.href = "/login.html";
-      throw new Error("Not authenticated");
+      if (path !== "/api/auth/login") {
+        if (!location.pathname.endsWith("login.html")) window.location.href = "/login.html";
+        throw new Error("Not authenticated");
+      }
     }
     if (res.status === 403) {
       window.location.href = "/403.html";

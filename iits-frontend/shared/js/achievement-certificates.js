@@ -75,7 +75,12 @@
     const form = document.getElementById("achievement-certificate-form");
     let studentId = null;
     let draftId = null;
+    let formDraft = null;
     let guide;
+
+    window.addEventListener("pagehide", () => {
+      if (formDraft) formDraft.stop();
+    }, { once: true });
 
     try {
       guide = await IITS.api("/api/achievement-certificate-scoring");
@@ -97,8 +102,10 @@
 
     async function loadStudentData() {
       if (!studentId) return;
-      form.dataset.draftScope = studentId;
-      IITS.restoreAutoSaveDraftFields(studentId);
+      if (formDraft) formDraft.stop();
+      formDraft = IITS.draft.start(form, `achievement-certificate-${studentId}`, {
+        exclude: ["ocr-consent", "confirmed-details"],
+      });
       draftId = null;
       document.getElementById("draft-id").value = "";
       document.getElementById("ocr-text").textContent = "Upload a certificate and run OCR to review its text.";
@@ -141,9 +148,12 @@
         await new Promise(resolve => window.requestAnimationFrame(resolve));
         studentId = childSelect.value;
         childSelect.addEventListener("change", () => {
+          if (formDraft) {
+            formDraft.stop();
+            formDraft = null;
+          }
           form.reset();
           studentId = childSelect.value;
-          form.dataset.draftScope = studentId;
           loadStudentData();
         });
       } catch (error) {
@@ -254,6 +264,10 @@
         await IITS.api(`${userPath(studentId)}/${encodeURIComponent(draftId)}/submit`, {
           method: "POST", body: payload,
         });
+        if (formDraft) {
+          formDraft.clear();
+          formDraft = null;
+        }
         draftId = null;
         form.reset();
         IITS.toast("Certificate submitted. Points will count after staff approval.", "success");

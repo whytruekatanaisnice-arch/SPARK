@@ -46,6 +46,7 @@
    *   sendAll:  true => payload contains ALL watched fields whenever anything changed
    *   anchor:   element/selector after which the status line is inserted
    *   interval: ms (default 10000)
+   *   exclude:  array of field ids/names not to persist
    * returns { flush(), markClean(), stop(), isDirty() }
    */
   IITS.autosave = function (opts) {
@@ -111,9 +112,11 @@
       form = $(form);
       const user = IITS.getUser();
       const storeKey = `iits_draft:${user ? user.id : "anon"}:${key}`;
-      const fields = [...form.querySelectorAll("input, textarea, select")]
-        .filter(el => el.type !== "file" && el.type !== "password" && el.type !== "hidden" && (el.id || el.name));
       const id = el => el.id || el.name;
+      const excluded = new Set((opts && opts.exclude) || []);
+      const fields = [...form.querySelectorAll("input, textarea, select")]
+        .filter(el => el.type !== "file" && el.type !== "password" && el.type !== "hidden"
+          && (el.id || el.name) && !excluded.has(id(el)));
 
       // Restore a previous draft, if any.
       try {

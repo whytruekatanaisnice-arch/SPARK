@@ -23,7 +23,7 @@ SPARK/
 
 ## Requirements
 
-- Python 3.11 or later
+- Python 3.12 for the backend (Python 3.11 or later is sufficient for the frontend static server)
 - A Supabase project with a PostgreSQL database
 - A modern web browser
 
